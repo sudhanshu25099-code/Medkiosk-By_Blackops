@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #1F5A8C;
+  --color-secondary: #2C3E50;
+  --color-success: #27AE60;
+  --color-warning: #E74C3C;
+  --color-neutral: #95A5A6;
+  --color-bg-light: #ECF0F1;
+
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  --transition-fast: 50ms ease-in-out;
+  --transition-base: 150ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
+}
+
+/* Base document */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: transparent;
+  color: #2C3E50;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+}
+
+/* Focus ring — accessible but not decorative */
+*:focus-visible {
+  outline: 2px solid #1F5A8C;
+  outline-offset: 2px;
+}
+
+/* Remove default outline for mouse users */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Clinical card style */
+@layer components {
+  .card {
+    @apply bg-white border border-bg-light rounded-md p-4;
+  }
+
+  .card-heading {
+    @apply text-sm font-semibold text-neutral-gray uppercase tracking-wide mb-3 pb-2 border-b border-bg-light;
+  }
+
+  /* Primary CTA button */
+  .btn-primary {
+    @apply bg-medical-blue text-white font-semibold text-base px-6 py-3 rounded-md
+           hover:bg-medical-blue-dark active:bg-medical-blue-darker
+           transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed
+           min-h-touch flex items-center justify-center;
+  }
+
+  /* Secondary button — outlined */
+  .btn-secondary {
+    @apply bg-white border border-bg-light text-clinical-gray font-semibold text-base px-6 py-3
+           rounded-md hover:bg-bg-light active:bg-neutral-gray/20
+           transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed
+           min-h-touch flex items-center justify-center;
+  }
+
+  /* Ghost / text button */
+  .btn-ghost {
+    @apply bg-transparent text-medical-blue font-semibold text-base px-4 py-2 rounded-md
+           hover:bg-bg-light active:bg-neutral-gray/20 transition-colors duration-150
+           min-h-touch flex items-center justify-center;
+  }
+
+  /* Form label */
+  .field-label {
+    @apply block text-sm font-medium text-clinical-gray mb-1;
+  }
+
+  /* Input field */
+  .field-input {
+    @apply w-full border border-bg-light rounded-md px-3 py-2 text-base text-clinical-gray
+           placeholder:text-neutral-gray bg-white
+           focus:border-medical-blue focus:outline-none transition-colors duration-150;
+  }
+
+  /* Triage badge */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-sm text-xs font-semibold uppercase tracking-wide border;
+  }
+
+  /* Alert / warning box */
+  .alert-box {
+    @apply border-l-4 p-4 rounded-sm;
+  }
+
+  /* Progress bar track */
+  .progress-track {
+    @apply w-full bg-bg-light rounded-full h-1.5 overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full bg-medical-blue transition-all duration-300 rounded-full;
+  }
+}
+
+/* Print styles */
+@media print {
+  body { background: white; }
+  .no-print { display: none !important; }
+  .card { border: 1px solid #ccc !important; }
+}
