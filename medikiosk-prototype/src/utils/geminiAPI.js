@@ -5,7 +5,7 @@
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = 'gemini-2.0-flash';
+const MODEL_NAME = 'gemini-3.6-flash';
 
 const CLINICAL_SYSTEM_PROMPT = `You are an expert clinical triage assistant operating in an Indian hospital OPD.
 Your task is to take the unstructured raw transcript of a patient's spoken history 
