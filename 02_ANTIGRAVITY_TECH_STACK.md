@@ -426,3 +426,5 @@ npm run build
 6. **Offline Support** - PWA (Progressive Web App)
 7. **Analytics** - track which symptoms are common
 8. **Red Flag Alerts** - animation for urgent symptoms
+ 9.**commit1**
+ 
