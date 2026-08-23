@@ -4,7 +4,7 @@
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = 'gemini-2.0-flash-exp';
+const MODEL_NAME = 'gemini-3.6-flash';
 
 const CLINICAL_SYSTEM_PROMPT = `You are an expert clinical triage assistant operating in an Indian hospital OPD.
 Your task is to take the unstructured raw transcript of a patient's spoken history 
@@ -29,7 +29,7 @@ Language: Use English in the JSON output regardless of patient's language`;
  */
 export async function structureHistory(transcription, ocrText = '') {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key not configured. Add VITE_GEMINI_API_KEY to .env.local');
+    throw new Error('Gemini API key not configured.');
   }
   if (!transcription || transcription.trim().length === 0) {
     throw new Error('Patient input cannot be empty');
