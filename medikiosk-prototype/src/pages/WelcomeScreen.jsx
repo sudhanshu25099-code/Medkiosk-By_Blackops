@@ -39,22 +39,8 @@ export default function WelcomeScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Top Bar */}
-      <header className="bg-medical-blue text-white px-6 py-4 flex items-center justify-between">
-        <div>
-          <span className="text-2xl font-bold tracking-tight">MediKiosk</span>
-          <span className="ml-3 text-sm text-blue-200 font-normal">Smart Health History</span>
-        </div>
-        <span className="text-xs text-blue-200 font-mono">
-          {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-        </span>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 max-w-xl mx-auto w-full px-6 py-8 flex flex-col gap-6">
-
-        {/* Welcome copy */}
+    <div className="w-full flex flex-col gap-5">
+      {/* Welcome copy */}
         <div className="card">
           <h1 className="text-xl font-semibold text-clinical-gray mb-2">
             Welcome to your health check-in
@@ -179,7 +165,6 @@ export default function WelcomeScreen() {
         <p className="text-center text-xs text-neutral-gray">
           Step 1 of 5 — Identification &amp; Consent
         </p>
-      </main>
     </div>
   );
 }
