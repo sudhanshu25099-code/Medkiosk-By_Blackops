@@ -14,6 +14,15 @@ const INITIAL_STATE = {
   // Captured voice/touch data
   rawTranscript: '',
   selectedSymptoms: [],
+  socratesResponses: {
+    severity: 5,
+    onset: '',
+    character: '',
+    radiation: '',
+    duration: '',
+    associated: [],
+    aggravatingRelieving: '',
+  },
 
   // Structured clinical data (populated by Gemini or offline mock)
   chiefComplaint: '',
