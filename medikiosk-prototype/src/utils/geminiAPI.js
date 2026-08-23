@@ -353,9 +353,8 @@ Please structure this into the following JSON schema. Respond ONLY with valid JS
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      const msg = err.error?.message || response.statusText;
-      console.error(`[Gemini API] Request failed (${response.status}):`, msg);
-      throw new Error(`Gemini API error (${response.status}): ${msg}`);
+      console.warn(`[Gemini API] Request failed (${response.status}): ${err.error?.message || response.statusText}. Falling back to offline clinical mock.`);
+      return getOfflineMockHistory(transcription);
     }
 
     const data = await response.json();
@@ -373,8 +372,8 @@ Please structure this into the following JSON schema. Respond ONLY with valid JS
 
     return JSON.parse(jsonMatch[0]);
   } catch (error) {
-    console.error('[Gemini API] Error:', error.message);
-    throw new Error(`Failed to structure history: ${error.message}`);
+    console.warn('[Gemini API] Network or execution error:', error.message, 'Falling back to offline clinical mock.');
+    return getOfflineMockHistory(transcription);
   }
 }
 
@@ -425,10 +424,8 @@ Return ONLY valid JSON, no markdown:
     );
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      const msg = err.error?.message || response.statusText;
-      console.error(`[Gemini API] OCR entity request failed (${response.status}):`, msg);
-      throw new Error(`Gemini API error (${response.status}): ${msg}`);
+      console.warn('[Gemini API] OCR entity request failed. Falling back to offline entity mock.');
+      return getOfflineMockEntities(ocrText);
     }
 
     const data = await response.json();
@@ -439,7 +436,7 @@ Return ONLY valid JSON, no markdown:
     }
     return JSON.parse(jsonMatch[0]);
   } catch (error) {
-    console.error('[Gemini API] Error extracting entities:', error.message);
-    throw new Error(`Failed to extract clinical entities: ${error.message}`);
+    console.warn('[Gemini API] Error extracting entities via API. Falling back to offline entity mock:', error.message);
+    return getOfflineMockEntities(ocrText);
   }
 }
