@@ -19,17 +19,9 @@ export default function HandoffScreen() {
   const triage = getTriageBadge(history.triagePriority);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <header className="bg-medical-blue text-white px-6 py-3 flex items-center justify-between">
-        <span className="text-lg font-bold">MediKiosk</span>
-        <span className="text-sm text-blue-200">Step 4 of 5 — Handoff</span>
-      </header>
-
-      <main className="flex-1 max-w-xl mx-auto w-full px-6 py-8 flex flex-col gap-6">
-
-        {/* Success indicator */}
-        <div className="flex flex-col items-center text-center gap-3 py-4">
+    <div className="w-full flex flex-col gap-5">
+      {/* Success indicator */}
+      <div className="flex flex-col items-center text-center gap-2 py-2">
           <CheckCircle className="w-14 h-14 text-success-green" strokeWidth={1.5} />
           <h1 className="text-2xl font-bold text-clinical-gray">
             Your health history is ready
@@ -110,7 +102,6 @@ export default function HandoffScreen() {
             <Printer className="w-4 h-4" /> PRINT FOR ME
           </button>
         </div>
-      </main>
     </div>
   );
 }

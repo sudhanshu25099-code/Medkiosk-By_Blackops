@@ -74,26 +74,8 @@ export default function DoctorDashboard() {
 
   // ---------- Render ----------
   return (
-    <div className="min-h-screen bg-bg-light flex flex-col">
-      {/* Header */}
-      <header className="bg-medical-blue text-white px-6 py-3 no-print">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div>
-            <span className="text-lg font-bold">MediKiosk</span>
-            <span className="ml-3 text-blue-200 text-sm">Doctor Dashboard</span>
-          </div>
-          <button
-            onClick={handleNewPatient}
-            className="flex items-center gap-1 text-sm text-blue-200 hover:text-white transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> New Patient
-          </button>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-6 flex flex-col gap-4">
-
-        {/* Patient header */}
+    <div className="w-full flex flex-col gap-4">
+      {/* Patient header */}
         <div className="card">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -338,7 +320,6 @@ export default function DoctorDashboard() {
             AI confidence: {Math.round(history.confidenceScore * 100)}% · Always verify with patient
           </p>
         )}
-      </main>
     </div>
   );
 }

@@ -111,17 +111,9 @@ export default function InterviewScreen() {
   const combinedInput = transcript.trim();
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Top Bar */}
-      <header className="bg-medical-blue text-white px-6 py-3 flex items-center justify-between">
-        <span className="text-lg font-bold">MediKiosk</span>
-        <span className="text-sm text-blue-200">Step 2 of 5 — Chief Complaint</span>
-      </header>
-
-      <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-6 flex flex-col gap-6">
-
-        <div>
-          <h1 className="text-2xl font-bold text-clinical-gray">Tell us what's wrong</h1>
+    <div className="w-full flex flex-col gap-5">
+      <div>
+        <h1 className="text-xl font-bold text-clinical-gray">Tell us what's wrong</h1>
           <p className="text-sm text-neutral-gray mt-1">
             Speak naturally into the microphone, or tap the symptoms below.
           </p>
@@ -273,7 +265,6 @@ export default function InterviewScreen() {
             )}
           </button>
         </div>
-      </main>
     </div>
   );
 }
