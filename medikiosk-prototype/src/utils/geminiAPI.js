@@ -27,13 +27,14 @@ Language: Use English in the JSON output regardless of patient's language`;
  * @param {string} input - Patient voice transcript or symptom description
  * @returns {Object} Structured clinical JSON
  */
-function getOfflineMockHistory(input) {
+function getOfflineMockHistory(input, socratesData = null) {
   const lower = (input || '').toLowerCase();
   const timestamp = new Date().toISOString();
+  let result;
 
   // Scenario 1: Chest Pain / Cardiac Emergency
   if (lower.includes('chest') || lower.includes('heart') || lower.includes('angina') || lower.includes('cardiac')) {
-    return {
+    result = {
       patient_demographics: {
         status: "Verified via ABHA (Offline Mock)",
         capture_method: "Voice + Touch (Simulated)",
@@ -82,11 +83,9 @@ function getOfflineMockHistory(input) {
       triage_priority: "Emergency",
       confidence_score: 0.98,
     };
-  }
-
-  // Scenario 2: Fever / Respiratory / Infection
-  if (lower.includes('fever') || lower.includes('cough') || lower.includes('throat') || lower.includes('chills')) {
-    return {
+  } else if (lower.includes('fever') || lower.includes('cough') || lower.includes('throat') || lower.includes('chills')) {
+    // Scenario 2: Fever / Respiratory / Infection
+    result = {
       patient_demographics: {
         status: "Verified via ABHA (Offline Mock)",
         capture_method: "Voice + Touch (Simulated)",
@@ -132,54 +131,79 @@ function getOfflineMockHistory(input) {
       triage_priority: "Urgent",
       confidence_score: 0.94,
     };
+  } else {
+    // Scenario 3: Headache / Migraine / Standard default
+    result = {
+      patient_demographics: {
+        status: "Verified via ABHA (Offline Mock)",
+        capture_method: "Voice + Touch (Simulated)",
+        timestamp,
+      },
+      chief_complaint: "Severe throbbing bilateral headache for 3 days",
+      history_of_present_illness: {
+        onset: "Gradual onset 3 days ago, progressive worsening",
+        character: "Throbbing, pulsating bilateral temporal pain",
+        radiation: "Radiates from temples to occipital and neck region",
+        associated_symptoms: [
+          "Nausea without active vomiting",
+          "Photophobia (sensitivity to bright light)",
+          "Absence of high fever"
+        ],
+        duration: "Continuous for 3 days with minimal respite",
+        severity: "8",
+        aggravating_relieving_factors: "Aggravated by bright light and movement; relieved in dark quiet room",
+      },
+      past_medical_history: {
+        conditions: [
+          "Essential Hypertension (diagnosed 5 years ago)"
+        ],
+        surgeries: [
+          "No prior surgical history"
+        ],
+      },
+      medications_and_allergies: {
+        current_medications: [
+          { name: "Amlodipine", dose: "5mg OD", indication: "Blood pressure management" }
+        ],
+        allergies: "NKDA (No Known Drug Allergies)",
+      },
+      extracted_lab_values: [
+        { test_name: "Blood Pressure", value: "150/90", unit: "mmHg", status: "Abnormal" },
+        { test_name: "Hemoglobin", value: "13.4", unit: "g/dL", status: "Normal" },
+        { test_name: "TSH", value: "2.4", unit: "mIU/L", status: "Normal" }
+      ],
+      red_flags_detected: [
+        "Severe persistent headache with photophobia and elevated BP (150/90 mmHg)"
+      ],
+      triage_priority: "Urgent",
+      confidence_score: 0.92,
+    };
   }
 
-  // Scenario 3: Headache / Migraine (Default / Standard scenario)
-  return {
-    patient_demographics: {
-      status: "Verified via ABHA (Offline Mock)",
-      capture_method: "Voice + Touch (Simulated)",
-      timestamp,
-    },
-    chief_complaint: "Severe throbbing bilateral headache for 3 days",
-    history_of_present_illness: {
-      onset: "Gradual onset 3 days ago, progressive worsening",
-      character: "Throbbing, pulsating bilateral temporal pain",
-      radiation: "Radiates from temples to occipital and neck region",
-      associated_symptoms: [
-        "Nausea without active vomiting",
-        "Photophobia (sensitivity to bright light)",
-        "Absence of high fever"
-      ],
-      duration: "Continuous for 3 days with minimal respite",
-      severity: "8",
-      aggravating_relieving_factors: "Aggravated by bright light and movement; relieved in dark quiet room",
-    },
-    past_medical_history: {
-      conditions: [
-        "Essential Hypertension (diagnosed 5 years ago)"
-      ],
-      surgeries: [
-        "No prior surgical history"
-      ],
-    },
-    medications_and_allergies: {
-      current_medications: [
-        { name: "Amlodipine", dose: "5mg OD", indication: "Blood pressure management" }
-      ],
-      allergies: "NKDA (No Known Drug Allergies)",
-    },
-    extracted_lab_values: [
-      { test_name: "Blood Pressure", value: "150/90", unit: "mmHg", status: "Abnormal" },
-      { test_name: "Hemoglobin", value: "13.4", unit: "g/dL", status: "Normal" },
-      { test_name: "TSH", value: "2.4", unit: "mIU/L", status: "Normal" }
-    ],
-    red_flags_detected: [
-      "Severe persistent headache with photophobia and elevated BP (150/90 mmHg)"
-    ],
-    triage_priority: "Urgent",
-    confidence_score: 0.92,
-  };
+  // If patient provided direct interactive SOCRATES responses, apply them seamlessly
+  if (socratesData) {
+    if (socratesData.severity !== undefined && socratesData.severity !== null) {
+      result.history_of_present_illness.severity = String(socratesData.severity);
+      if (Number(socratesData.severity) >= 9 && result.triage_priority !== 'Emergency') {
+        result.triage_priority = 'Emergency';
+        result.red_flags_detected.push(`High pain severity rating (${socratesData.severity}/10) requiring prompt triage`);
+      }
+    }
+    if (socratesData.onset) result.history_of_present_illness.onset = socratesData.onset;
+    if (socratesData.character) result.history_of_present_illness.character = socratesData.character;
+    if (socratesData.radiation) result.history_of_present_illness.radiation = socratesData.radiation;
+    if (socratesData.duration) result.history_of_present_illness.duration = socratesData.duration;
+    if (socratesData.associated && socratesData.associated.length > 0) {
+      result.history_of_present_illness.associated_symptoms = [
+        ...new Set([...result.history_of_present_illness.associated_symptoms, ...socratesData.associated])
+      ];
+    }
+    if (socratesData.aggravatingRelieving) {
+      result.history_of_present_illness.aggravating_relieving_factors = socratesData.aggravatingRelieving;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -236,9 +260,10 @@ function getOfflineMockEntities(ocrText) {
  * Structure raw patient transcript into clinical JSON via Gemini or Offline Fallback
  * @param {string} transcription - Raw voice transcript or symptom string
  * @param {string} ocrText - Extracted text from uploaded documents (optional)
+ * @param {Object} socratesData - Direct patient SOCRATES probing responses (optional)
  * @returns {Promise<Object>} Structured clinical history
  */
-export async function structureHistory(transcription, ocrText = '') {
+export async function structureHistory(transcription, ocrText = '', socratesData = null) {
   if (!transcription || transcription.trim().length === 0) {
     throw new Error('Patient input cannot be empty');
   }
@@ -248,7 +273,21 @@ export async function structureHistory(transcription, ocrText = '') {
     console.info('[Gemini API] No valid VITE_GEMINI_API_KEY found. Utilizing offline clinical mock fallback.');
     // Simulated realistic delay for authentic UX
     await new Promise((resolve) => setTimeout(resolve, 800));
-    return getOfflineMockHistory(transcription);
+    return getOfflineMockHistory(transcription, socratesData);
+  }
+
+  let socratesSection = '';
+  if (socratesData) {
+    socratesSection = `
+Direct Patient Interactive SOCRATES Probing Responses:
+- Pain / Severity Rating: ${socratesData.severity !== undefined ? `${socratesData.severity}/10` : 'Not specified'}
+- Reported Onset: ${socratesData.onset || 'Not specified'}
+- Symptom Character: ${socratesData.character || 'Not specified'}
+- Radiation / Spread: ${socratesData.radiation || 'Not specified'}
+- Duration: ${socratesData.duration || 'Not specified'}
+- Associated Symptoms: ${socratesData.associated?.length ? socratesData.associated.join(', ') : 'None'}
+- Aggravating / Relieving Factors: ${socratesData.aggravatingRelieving || 'Not specified'}
+`;
   }
 
   const prompt = `${CLINICAL_SYSTEM_PROMPT}
@@ -256,6 +295,7 @@ export async function structureHistory(transcription, ocrText = '') {
 Raw Patient Voice Transcript:
 "${transcription.trim()}"
 
+${socratesSection}
 ${ocrText ? `Extracted OCR Text from Prior Reports:\n"${ocrText}"` : 'No prior documents provided'}
 
 Please structure this into the following JSON schema. Respond ONLY with valid JSON, no markdown, no other text:
@@ -314,26 +354,26 @@ Please structure this into the following JSON schema. Respond ONLY with valid JS
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       console.warn(`[Gemini API] Request failed (${response.status}): ${err.error?.message || response.statusText}. Falling back to offline clinical mock.`);
-      return getOfflineMockHistory(transcription);
+      return getOfflineMockHistory(transcription, socratesData);
     }
 
     const data = await response.json();
     if (!data.candidates?.[0]) {
       console.warn('[Gemini API] Unexpected response structure. Falling back to offline clinical mock.');
-      return getOfflineMockHistory(transcription);
+      return getOfflineMockHistory(transcription, socratesData);
     }
 
     const responseText = data.candidates[0].content.parts[0].text;
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.warn('[Gemini API] No valid JSON block parsed. Falling back to offline clinical mock.');
-      return getOfflineMockHistory(transcription);
+      return getOfflineMockHistory(transcription, socratesData);
     }
 
     return JSON.parse(jsonMatch[0]);
   } catch (error) {
     console.warn('[Gemini API] Network or execution error:', error.message, 'Falling back to offline clinical mock.');
-    return getOfflineMockHistory(transcription);
+    return getOfflineMockHistory(transcription, socratesData);
   }
 }
 
