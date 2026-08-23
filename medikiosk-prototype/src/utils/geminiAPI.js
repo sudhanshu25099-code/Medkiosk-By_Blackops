@@ -5,7 +5,7 @@
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = 'gemini-2.0-flash';
+const MODEL_NAME = 'gemini-3.6-flash';
 
 const CLINICAL_SYSTEM_PROMPT = `You are an expert clinical triage assistant operating in an Indian hospital OPD.
 Your task is to take the unstructured raw transcript of a patient's spoken history 
@@ -353,8 +353,9 @@ Please structure this into the following JSON schema. Respond ONLY with valid JS
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      console.warn(`[Gemini API] Request failed (${response.status}): ${err.error?.message || response.statusText}. Falling back to offline clinical mock.`);
-      return getOfflineMockHistory(transcription, socratesData);
+      const msg = err.error?.message || response.statusText;
+      console.error(`[Gemini API] Request failed (${response.status}):`, msg);
+      throw new Error(`Gemini API error (${response.status}): ${msg}`);
     }
 
     const data = await response.json();
@@ -372,8 +373,8 @@ Please structure this into the following JSON schema. Respond ONLY with valid JS
 
     return JSON.parse(jsonMatch[0]);
   } catch (error) {
-    console.warn('[Gemini API] Network or execution error:', error.message, 'Falling back to offline clinical mock.');
-    return getOfflineMockHistory(transcription, socratesData);
+    console.error('[Gemini API] Error:', error.message);
+    throw new Error(`Failed to structure history: ${error.message}`);
   }
 }
 
@@ -424,8 +425,10 @@ Return ONLY valid JSON, no markdown:
     );
 
     if (!response.ok) {
-      console.warn('[Gemini API] OCR entity request failed. Falling back to offline entity mock.');
-      return getOfflineMockEntities(ocrText);
+      const err = await response.json().catch(() => ({}));
+      const msg = err.error?.message || response.statusText;
+      console.error(`[Gemini API] OCR entity request failed (${response.status}):`, msg);
+      throw new Error(`Gemini API error (${response.status}): ${msg}`);
     }
 
     const data = await response.json();
@@ -436,7 +439,7 @@ Return ONLY valid JSON, no markdown:
     }
     return JSON.parse(jsonMatch[0]);
   } catch (error) {
-    console.warn('[Gemini API] Error extracting entities via API. Falling back to offline entity mock:', error.message);
-    return getOfflineMockEntities(ocrText);
+    console.error('[Gemini API] Error extracting entities:', error.message);
+    throw new Error(`Failed to extract clinical entities: ${error.message}`);
   }
 }
