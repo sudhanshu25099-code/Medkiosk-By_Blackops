@@ -55,7 +55,7 @@ body {
 /* Clinical card style */
 @layer components {
   .card {
-    @apply bg-white border border-bg-light rounded-md p-4;
+    @apply bg-white/85 backdrop-blur-md border border-white/60 rounded-xl p-5 shadow-lg;
   }
 
   .card-heading {
