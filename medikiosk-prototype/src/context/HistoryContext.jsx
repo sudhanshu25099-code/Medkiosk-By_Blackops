@@ -1,6 +1,8 @@
-import React, { createContext, useState, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 
 export const HistoryContext = createContext();
+
+const STORAGE_KEY = 'medikiosk_session_history';
 
 const INITIAL_STATE = {
   // Patient info
@@ -13,7 +15,7 @@ const INITIAL_STATE = {
   rawTranscript: '',
   selectedSymptoms: [],
 
-  // Structured clinical data (populated by Gemini)
+  // Structured clinical data (populated by Gemini or offline mock)
   chiefComplaint: '',
 
   hpi: {
@@ -48,12 +50,42 @@ const INITIAL_STATE = {
   confidenceScore: 0,
 };
 
-export function HistoryProvider({ children }) {
-  const [history, setHistory] = useState(INITIAL_STATE);
+/** Helper to retrieve persisted session data */
+function getInitialStoredState() {
+  if (typeof window === 'undefined') return INITIAL_STATE;
+  try {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...INITIAL_STATE, ...parsed };
+    }
+  } catch (err) {
+    console.warn('[HistoryContext] Failed to load session storage:', err);
+  }
+  return INITIAL_STATE;
+}
 
-  /** Reset to initial empty state (new patient) */
+export function HistoryProvider({ children }) {
+  const [history, setHistory] = useState(getInitialStoredState);
+
+  // Sync state changes to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    } catch (err) {
+      console.warn('[HistoryContext] Failed to save to session storage:', err);
+    }
+  }, [history]);
+
+  /** Reset to initial empty state (new patient) and clear session */
   const resetHistory = useCallback(() => {
-    setHistory({ ...INITIAL_STATE, timestamp: new Date().toISOString() });
+    const freshState = { ...INITIAL_STATE, timestamp: new Date().toISOString() };
+    setHistory(freshState);
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch (err) {
+      console.warn('[HistoryContext] Failed to remove session storage:', err);
+    }
   }, []);
 
   /** Merge structured Gemini response into history state */
