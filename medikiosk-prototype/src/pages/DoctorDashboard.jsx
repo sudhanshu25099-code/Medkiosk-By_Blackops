@@ -1,14 +1,14 @@
 import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Printer, Edit2, Check, Save, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Printer, Edit2, Check, Save, AlertTriangle, RotateCcw, Leaf, Sparkles } from 'lucide-react';
 import { HistoryContext } from '../context/HistoryContext';
 import { getTriageBadge, getLabStatusClass, formatTimestamp, bulletList } from '../utils/formatters';
 
 // Reusable section card
-function Section({ title, children }) {
+function Section({ title, children, accent }) {
   return (
     <div className="card animate-slide-up">
-      <div className="card-heading">{title}</div>
+      <div className={`card-heading ${accent || ''}`}>{title}</div>
       {children}
     </div>
   );
@@ -27,6 +27,19 @@ function InfoRow({ label, value }) {
   );
 }
 
+// AYUSH factor row (emerald accent)
+function AyushRow({ label, value }) {
+  const display = value && String(value).trim() && String(value) !== 'Not specified'
+    ? value
+    : <span className="text-slate-400 italic text-xs">Not assessed</span>;
+  return (
+    <div className="flex gap-3 py-1.5 border-b border-emerald-100 last:border-0">
+      <span className="text-xs font-bold text-emerald-800 w-36 shrink-0">{label}</span>
+      <span className="text-xs text-slate-700 flex-1 leading-relaxed">{display}</span>
+    </div>
+  );
+}
+
 export default function DoctorDashboard() {
   const navigate = useNavigate();
   const { history, setHistory, resetHistory } = useContext(HistoryContext);
@@ -40,11 +53,13 @@ export default function DoctorDashboard() {
     history.redFlags && history.redFlags.length > 0 && history.redFlags[0] !== 'None';
   const isEmergency = history.triagePriority?.toLowerCase() === 'emergency';
   const isUrgent = history.triagePriority?.toLowerCase() === 'urgent';
+  const isAyushMode = history.mode === 'ayush';
 
   const hpi = history.hpi || {};
   const pmh = history.pastMedicalHistory || {};
   const meds = history.medicationsAndAllergies || {};
   const labs = history.priorLabValues || [];
+  const ayush = history.ayushAssessment || null;
 
   // ---------- Edit mode ----------
   const handleEditToggle = () => {
@@ -90,6 +105,11 @@ export default function DoctorDashboard() {
                 <span>
                   Method: {history.selectedSymptoms?.length > 0 ? 'Voice + Touch' : 'Voice'}
                 </span>
+                {isAyushMode && (
+                  <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                    🌿 AYUSH Mode — Dashawidha Pariksha
+                  </span>
+                )}
               </div>
             </div>
             <span className={`badge ${triage.bg} ${triage.text} ${triage.border}`}>
@@ -154,23 +174,116 @@ export default function DoctorDashboard() {
           )}
         </Section>
 
-        {/* HPI — SOCRATES */}
-        <Section title="History of Present Illness (SOCRATES)">
-          <InfoRow label="Onset" value={hpi.onset} />
-          <InfoRow label="Character" value={hpi.character} />
-          <InfoRow label="Radiation" value={hpi.radiation} />
-          <InfoRow
-            label="Associated symptoms"
-            value={
-              hpi.associated_symptoms?.length > 0
-                ? hpi.associated_symptoms.join(', ')
-                : 'None reported'
-            }
-          />
-          <InfoRow label="Duration" value={hpi.duration} />
-          <InfoRow label="Severity" value={hpi.severity ? `${hpi.severity}/10` : null} />
-          <InfoRow label="Aggravating / Relieving" value={hpi.aggravating_relieving_factors} />
-        </Section>
+        {/* ── AYUSH: Dashawidha Pariksha Assessment Panel ── */}
+        {isAyushMode && ayush && (
+          <div className="card animate-slide-up border border-emerald-200 bg-gradient-to-br from-emerald-50/50 to-white">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-emerald-100">
+              <span className="text-base">🌿</span>
+              <span className="text-sm font-extrabold text-emerald-800 uppercase tracking-wide">
+                Dashawidha Pariksha — 10-Factor Ayurvedic Assessment
+              </span>
+              {ayush.confidence_score && (
+                <span className="ml-auto text-[11px] bg-emerald-100 border border-emerald-300 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                  AI Confidence: {Math.round(ayush.confidence_score * 100)}%
+                </span>
+              )}
+            </div>
+
+            {/* 10 Dashawidha Factors */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+              <AyushRow label="🌀 Prakriti (Constitution)" value={ayush.prakriti} />
+              <AyushRow label="⚖️ Vikriti (Imbalance)" value={ayush.vikriti} />
+              <AyushRow label="🔥 Agni (Digestive Fire)" value={ayush.agni} />
+              <AyushRow label="🌊 Koshtha (Bowel Nature)" value={ayush.koshtha} />
+              <AyushRow label="💪 Bala (Physical Strength)" value={ayush.bala} />
+              <AyushRow label="🧬 Sara (Tissue Quality)" value={ayush.sara} />
+              <AyushRow label="🏗️ Samhanana (Body Frame)" value={ayush.samhanana} />
+              <AyushRow label="🛡️ Satmya (Tolerance)" value={ayush.satmya} />
+              <AyushRow label="🧘 Sattva (Mental Strength)" value={ayush.sattva} />
+              <AyushRow label="⏳ Vaya (Life Stage)" value={ayush.vaya} />
+            </div>
+
+            {/* Nidana */}
+            {ayush.nidana && ayush.nidana.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-emerald-100">
+                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-2">
+                  🌱 Nidana (Causative Factors)
+                </p>
+                <ul className="space-y-1">
+                  {ayush.nidana.map((n, i) => (
+                    <li key={i} className="text-xs text-slate-700 flex items-start gap-2">
+                      <span className="text-emerald-500 font-bold mt-0.5">•</span> {n}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Samprapti */}
+            {ayush.samprapti && (
+              <div className="mt-3 pt-3 border-t border-emerald-100">
+                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-1">
+                  🔄 Samprapti (Pathogenesis)
+                </p>
+                <p className="text-xs text-slate-700 leading-relaxed">{ayush.samprapti}</p>
+              </div>
+            )}
+
+            {/* Chikitsa Sutra */}
+            {ayush.chikitsa_sutra && ayush.chikitsa_sutra.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-emerald-100">
+                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-2">
+                  💊 Chikitsa Sutra (Treatment Principles)
+                </p>
+                <ul className="space-y-1">
+                  {ayush.chikitsa_sutra.map((c, i) => (
+                    <li key={i} className="text-xs text-slate-700 flex items-start gap-2">
+                      <span className="text-teal-500 font-bold mt-0.5">→</span> {c}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── AYUSH: HPI in Ayurvedic terms ── */}
+        {isAyushMode ? (
+          <Section title="History of Present Illness (Ayurvedic)">
+            <InfoRow label="Onset" value={hpi.onset} />
+            <InfoRow label="Character" value={hpi.character} />
+            <InfoRow label="Radiation / Spread" value={hpi.radiation} />
+            <InfoRow
+              label="Associated symptoms"
+              value={
+                hpi.associated_symptoms?.length > 0
+                  ? hpi.associated_symptoms.join(', ')
+                  : 'None reported'
+              }
+            />
+            <InfoRow label="Duration" value={hpi.duration} />
+            <InfoRow label="Severity" value={hpi.severity ? `${hpi.severity}/10` : null} />
+            <InfoRow label="Aggravating / Relieving" value={hpi.aggravating_relieving_factors} />
+          </Section>
+        ) : (
+          /* HPI — SOCRATES */
+          <Section title="History of Present Illness (SOCRATES)">
+            <InfoRow label="Onset" value={hpi.onset} />
+            <InfoRow label="Character" value={hpi.character} />
+            <InfoRow label="Radiation" value={hpi.radiation} />
+            <InfoRow
+              label="Associated symptoms"
+              value={
+                hpi.associated_symptoms?.length > 0
+                  ? hpi.associated_symptoms.join(', ')
+                  : 'None reported'
+              }
+            />
+            <InfoRow label="Duration" value={hpi.duration} />
+            <InfoRow label="Severity" value={hpi.severity ? `${hpi.severity}/10` : null} />
+            <InfoRow label="Aggravating / Relieving" value={hpi.aggravating_relieving_factors} />
+          </Section>
+        )}
 
         {/* Two-column: PMH + Medications */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
