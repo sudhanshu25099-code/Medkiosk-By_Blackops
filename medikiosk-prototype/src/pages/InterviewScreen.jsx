@@ -15,11 +15,12 @@ import {
   HelpCircle, 
   Layers,
   Sparkles,
-  Flame
+  Flame,
+  Leaf
 } from 'lucide-react';
 import { HistoryContext } from '../context/HistoryContext';
 import { initiateSpeechRecognition } from '../utils/speechRecognition';
-import { structureHistory } from '../utils/geminiAPI';
+import { structureHistory, structureAyushHistory } from '../utils/geminiAPI';
 
 const COMMON_SYMPTOMS = [
   'Fever', 'Cough', 'Headache', 'Chest Pain',
@@ -73,6 +74,80 @@ const FACTORS_OPTIONS = [
   { label: 'Constant (No relieving factors)', value: 'Constant intensity with no identifiable relieving factors' },
 ];
 
+// Dashawidha Pariksha 10-Factor Ayurvedic Assessment (used when mode === 'ayush')
+const DASHAWIDHA_FACTORS = [
+  {
+    key: 'prakriti',
+    label: 'Prakriti (Body Constitution)',
+    sublabel: 'Your natural body type since birth',
+    icon: '🌀',
+    options: ['Vata Dominant (Lean, dry, quick, anxious)', 'Pitta Dominant (Medium, sharp, hot, intense)', 'Kapha Dominant (Heavy, calm, slow, strong)', 'Vata-Pitta (Lean + Sharp)', 'Pitta-Kapha (Medium + Heavy)', 'Vata-Kapha (Lean + Heavy)', 'Tridoshic (Balanced all three)'],
+  },
+  {
+    key: 'vikriti',
+    label: 'Vikriti (Current Imbalance)',
+    sublabel: 'How is your body feeling different from usual?',
+    icon: '⚖️',
+    options: ['Vata aggravated (Dryness, anxiety, pain)', 'Pitta aggravated (Heat, acidity, anger)', 'Kapha aggravated (Heaviness, lethargy, mucus)', 'Vata-Pitta imbalance', 'Pitta-Kapha imbalance', 'Vata-Kapha imbalance', 'No clear imbalance'],
+  },
+  {
+    key: 'agni',
+    label: 'Agni (Digestive Fire)',
+    sublabel: 'How is your digestion?',
+    icon: '🔥',
+    options: ['Sama Agni (Regular, balanced digestion)', 'Vishama Agni (Irregular, variable appetite)', 'Tikshna Agni (Sharp, excessive hunger, acidity)', 'Manda Agni (Slow, weak, heavy after meals)'],
+  },
+  {
+    key: 'koshtha',
+    label: 'Koshtha (Bowel Nature)',
+    sublabel: 'How are your bowel movements?',
+    icon: '🌊',
+    options: ['Krura Koshtha (Hard, constipated)', 'Mridu Koshtha (Soft, loose stools)', 'Madhyama Koshtha (Regular, 1-2 times/day)'],
+  },
+  {
+    key: 'bala',
+    label: 'Bala (Physical Strength)',
+    sublabel: 'Your energy and physical capacity',
+    icon: '💪',
+    options: ['Pravara Bala (Strong — tolerates exercise well)', 'Madhyama Bala (Moderate — average energy)', 'Avara Bala (Weak — easily fatigued)'],
+  },
+  {
+    key: 'sara',
+    label: 'Sara (Tissue Quality / Constitution)',
+    sublabel: 'Your predominant body tissue type',
+    icon: '🧬',
+    options: ['Tvak Sara (Skin — smooth, radiant)', 'Rakta Sara (Blood — reddish, lively)', 'Mamsa Sara (Muscle — firm, strong body)', 'Meda Sara (Fat — plump, oily)', 'Asthi Sara (Bone — large joints, prominent frame)', 'Majja Sara (Marrow — deep-set eyes, wise)', 'Shukra Sara (Reproductive — vigorous, lustrous)'],
+  },
+  {
+    key: 'samhanana',
+    label: 'Samhanana (Body Frame)',
+    sublabel: 'Your overall body build',
+    icon: '🏗️',
+    options: ['Pravara Samhanana (Well-built, compact frame)', 'Madhyama Samhanana (Medium build)', 'Hina Samhanana (Lean, thin, irregular frame)'],
+  },
+  {
+    key: 'satmya',
+    label: 'Satmya (Tolerance / Adaptability)',
+    sublabel: 'Foods and environments you tolerate best',
+    icon: '🛡️',
+    options: ['Sarvarasa Satmya (All tastes, high adaptability)', 'Madhura-Snigdha Satmya (Sweet, unctuous preferred)', 'Laghu-Ruksha Satmya (Light, dry foods preferred)', 'Usna Satmya (Hot foods and climate preferred)', 'Sheeta Satmya (Cold foods and climate preferred)'],
+  },
+  {
+    key: 'sattva',
+    label: 'Sattva (Mental Strength)',
+    sublabel: 'Your emotional resilience and mental state',
+    icon: '🧘',
+    options: ['Pravara Sattva (High — calm, fearless, sharp memory)', 'Madhyama Sattva (Moderate — average emotional stability)', 'Avara Sattva (Low — fearful, anxious, poor memory)'],
+  },
+  {
+    key: 'vaya',
+    label: 'Vaya (Life Stage)',
+    sublabel: 'Your current life phase (determines Dosha dominance)',
+    icon: '⏳',
+    options: ['Bala Vaya (Kapha stage — childhood, 0-16 yrs)', 'Madhya Vaya (Pitta stage — young adult, 16-60 yrs)', 'Jara Vaya (Vata stage — senior, 60+ yrs)'],
+  },
+];
+
 // Helper for severity color & emoji description
 function getSeverityDescriptor(val) {
   const num = Number(val);
@@ -87,7 +162,9 @@ export default function InterviewScreen() {
   const navigate = useNavigate();
   const { history, setHistory, updateWithStructuredData } = useContext(HistoryContext);
 
-  // Stage state: 'complaint' (Stage 1) -> 'socrates' (Stage 2)
+  const isAyushMode = history.mode === 'ayush';
+
+  // Stage state: 'complaint' (Stage 1) -> 'socrates' or 'dashawidha' (Stage 2)
   const [stage, setStage] = useState('complaint');
 
   // Stage 1 State: Chief Complaint & Voice
@@ -99,7 +176,7 @@ export default function InterviewScreen() {
   const [apiError, setApiError] = useState('');
   const [micSupported, setMicSupported] = useState(true);
 
-  // Stage 2 State: SOCRATES Probing
+  // Stage 2 State: SOCRATES Probing (Allopathy mode)
   const [severity, setSeverity] = useState(history.socratesResponses?.severity || 5);
   const [onset, setOnset] = useState(history.socratesResponses?.onset || '');
   const [character, setCharacter] = useState(history.socratesResponses?.character || '');
@@ -107,6 +184,11 @@ export default function InterviewScreen() {
   const [associated, setAssociated] = useState(history.socratesResponses?.associated || []);
   const [aggravatingRelieving, setAggravatingRelieving] = useState(history.socratesResponses?.aggravatingRelieving || '');
   const [voiceAddendum, setVoiceAddendum] = useState('');
+
+  // Stage 2 State: Dashawidha Pariksha (AYUSH mode)
+  const [dashawidhaSelections, setDashawidhaSelections] = useState(
+    history.dashawidhaResponses || {}
+  );
 
   const recognitionRef = useRef(null);
 
@@ -187,7 +269,16 @@ export default function InterviewScreen() {
       recognitionRef.current?.stop();
       setIsListening(false);
     }
-    setStage('socrates');
+    // Branch to ayush or SOCRATES stage
+    setStage(isAyushMode ? 'dashawidha' : 'socrates');
+  };
+
+  // Dashawidha selection handler
+  const handleDashawidhaSelect = (key, value) => {
+    setDashawidhaSelections((prev) => ({
+      ...prev,
+      [key]: prev[key] === value ? '' : value, // toggle off if same selected
+    }));
   };
 
   const handleAssociatedToggle = (item) => {
@@ -204,29 +295,40 @@ export default function InterviewScreen() {
       ? `${mainInput}. Additional notes: ${voiceAddendum.trim()}` 
       : mainInput;
 
-    const socratesData = {
-      severity: Number(severity),
-      onset: onset || (severity >= 8 ? 'Sudden onset' : 'Gradual onset'),
-      character: character || 'Aching discomfort',
-      radiation: radiation || 'Localized',
-      duration: onset || '1-3 days',
-      associated,
-      aggravatingRelieving: aggravatingRelieving || 'Not specified',
-    };
-
     setIsProcessing(true);
     setApiError('');
 
     try {
-      setHistory((prev) => ({
-        ...prev,
-        rawTranscript: fullTranscript,
-        selectedSymptoms,
-        socratesResponses: socratesData,
-      }));
-
-      const structured = await structureHistory(fullTranscript, '', socratesData);
-      updateWithStructuredData(structured);
+      if (isAyushMode) {
+        // ── AYUSH MODE: Dashawidha Pariksha structuring ──
+        setHistory((prev) => ({
+          ...prev,
+          rawTranscript: fullTranscript,
+          selectedSymptoms,
+          dashawidhaResponses: dashawidhaSelections,
+        }));
+        const structured = await structureAyushHistory(fullTranscript, dashawidhaSelections);
+        updateWithStructuredData(structured);
+      } else {
+        // ── ALLOPATHY MODE: SOCRATES structuring ──
+        const socratesData = {
+          severity: Number(severity),
+          onset: onset || (severity >= 8 ? 'Sudden onset' : 'Gradual onset'),
+          character: character || 'Aching discomfort',
+          radiation: radiation || 'Localized',
+          duration: onset || '1-3 days',
+          associated,
+          aggravatingRelieving: aggravatingRelieving || 'Not specified',
+        };
+        setHistory((prev) => ({
+          ...prev,
+          rawTranscript: fullTranscript,
+          selectedSymptoms,
+          socratesResponses: socratesData,
+        }));
+        const structured = await structureHistory(fullTranscript, '', socratesData);
+        updateWithStructuredData(structured);
+      }
       navigate('/upload');
     } catch (err) {
       setApiError(err.message || 'Failed to process clinical history.');

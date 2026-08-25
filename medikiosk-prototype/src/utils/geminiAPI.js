@@ -440,3 +440,309 @@ Return ONLY valid JSON, no markdown:
     return getOfflineMockEntities(ocrText);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AYUSH DASHAWIDHA PARIKSHA MODE
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AYUSH_SYSTEM_PROMPT = `You are an expert Ayurvedic clinical historian operating in an AYUSH OPD in India.
+Your task is to take the patient's spoken complaint and their Dashawidha Pariksha responses, 
+and structure them into a comprehensive Ayurvedic clinical record.
+
+Follow these rules:
+1. Use the Dashawidha Pariksha (10-Factor Ayurvedic Assessment) framework
+2. Identify Prakriti (constitutional type: Vata/Pitta/Kapha or combination)
+3. Identify Vikriti (current imbalance/disease pattern)
+4. Assess Agni (digestive fire: Sama/Vishama/Tikshna/Manda)
+5. Assess Koshtha (bowel nature: Krura/Mridu/Madhyama)
+6. If a factor is not mentioned, output "Not specified"
+7. Provide a gentle, holistic triage priority (Routine/Urgent/Emergency)
+8. Always output valid JSON only`;
+
+/**
+ * Generate offline mock AYUSH Dashawidha assessment based on prakriti
+ * @param {string} transcript - Patient voice transcript
+ * @param {Object} dashawidha - Dashawidha Pariksha form responses
+ * @returns {Object} Structured AYUSH clinical JSON
+ */
+function getOfflineMockAyush(transcript, dashawidha = {}) {
+  const lower = (transcript || '').toLowerCase();
+  const prakriti = (dashawidha.prakriti || '').toLowerCase();
+  const timestamp = new Date().toISOString();
+
+  // Pitta-dominant scenario (Heat, inflammation, anger, burning symptoms)
+  if (
+    prakriti.includes('pitta') ||
+    lower.includes('burning') || lower.includes('acid') ||
+    lower.includes('anger') || lower.includes('inflammation') || lower.includes('fever')
+  ) {
+    return {
+      chief_complaint: 'Burning gastric discomfort with irritability and heat sensitivity',
+      ayush_assessment: {
+        prakriti: dashawidha.prakriti || 'Pitta-Kapha Dominant',
+        vikriti: 'Elevated Pitta — Hyperacidity, Pittaja Jvara (Inflammatory fever pattern)',
+        agni: dashawidha.agni || 'Tikshna Agni (Sharp, hyperactive digestive fire)',
+        koshtha: dashawidha.koshtha || 'Mridu Koshtha (Soft, loose bowel tendency)',
+        bala: dashawidha.bala || 'Moderate — Madhyama Bala',
+        sara: dashawidha.sara || 'Mamsa Sara (Muscular constitution)',
+        samhanana: dashawidha.samhanana || 'Compact, medium frame (Madhyama Samhanana)',
+        satmya: dashawidha.satmya || 'Partial tolerance — Pitta-aggravating foods contraindicated',
+        sattva: dashawidha.sattva || 'Madhyama Sattva — moderate mental resilience',
+        vaya: dashawidha.vaya || 'Madhya Vaya (Middle age — 35-55 years)',
+        nidana: [
+          'Excessive intake of spicy, sour, and fermented foods',
+          'Irregular meal timing',
+          'Exposure to excessive heat and direct sunlight',
+          'Suppressed anger and emotional stress',
+        ],
+        samprapti: 'Pitta aggravation → Hyperacidity → Amlapitta (Gastritis) pathway. Pitta vitiation affecting Pakwashaya (colon) and Amashaya (stomach).',
+        chikitsa_sutra: [
+          'Pitta Shamaka diet: sweet, bitter, astringent tastes',
+          'Avoid spicy, sour, fermented, and processed foods',
+          'Recommended: Amalaki Churna, Shatavari, Yashtimadhu (Licorice)',
+          'Avoid Virechana until inflammatory phase subsides',
+          'Sheetali Pranayama and cooling lifestyle modifications',
+        ],
+        triage_priority: 'Routine',
+        confidence_score: 0.91,
+        timestamp,
+      },
+      history_of_present_illness: {
+        onset: 'Gradual onset over the past 2 weeks, worsening with diet irregularity',
+        character: 'Burning retrosternal and epigastric discomfort with acid regurgitation',
+        radiation: 'Localized to epigastric region with occasional referred throat burning',
+        associated_symptoms: ['Acid belching', 'Irritability', 'Low-grade fever', 'Loss of appetite'],
+        duration: '2 weeks progressively worsening',
+        severity: '5',
+        aggravating_relieving_factors: 'Worsened by spicy food, alcohol, stress; relieved by cool water and rest',
+      },
+      past_medical_history: { conditions: ['Recurrent Hyperacidity (Amlapitta)'], surgeries: [] },
+      medications_and_allergies: {
+        current_medications: [{ name: 'Avipattikar Churna', dose: '5g BD', indication: 'Hyperacidity control' }],
+        allergies: 'NKDA',
+      },
+      extracted_lab_values: [],
+      red_flags_detected: ['Monitor for Pittaja Prameha (diabetic tendency) given chronic dietary pattern'],
+      triage_priority: 'Routine',
+      confidence_score: 0.91,
+    };
+  }
+
+  // Kapha-dominant scenario (Lethargy, congestion, heaviness, weight gain)
+  if (
+    prakriti.includes('kapha') ||
+    lower.includes('lethargy') || lower.includes('weight') ||
+    lower.includes('congestion') || lower.includes('cough') || lower.includes('heavy')
+  ) {
+    return {
+      chief_complaint: 'Heaviness, lethargy, and chronic nasal congestion with low appetite',
+      ayush_assessment: {
+        prakriti: dashawidha.prakriti || 'Kapha Dominant',
+        vikriti: 'Kapha Vata aggravation — Shlaishmika Pratishyaya (Allergic Rhinitis), Sthaulya (Obesity tendency)',
+        agni: dashawidha.agni || 'Manda Agni (Slow, weak digestive fire)',
+        koshtha: dashawidha.koshtha || 'Krura Koshtha (Constipated, hard bowel tendency)',
+        bala: dashawidha.bala || 'Madhyama Bala with Kapha excess',
+        sara: dashawidha.sara || 'Meda Sara (Fatty constitution)',
+        samhanana: dashawidha.samhanana || 'Heavy, compact, broad frame (Sthula Samhanana)',
+        satmya: dashawidha.satmya || 'Tolerates cold and damp environments poorly',
+        sattva: dashawidha.sattva || 'Avara Sattva — prone to emotional lethargy',
+        vaya: dashawidha.vaya || 'Madhya Vaya (30-50 years)',
+        nidana: [
+          'Excessive daytime sleep (Divasvapna)',
+          'Sedentary lifestyle with minimal physical activity',
+          'Heavy, oily, cold, and sweet food excess',
+          'Exposure to cold and damp weather',
+        ],
+        samprapti: 'Kapha aggravation → Srotovarodha (channel blockage) → Meda Dhatu vitiation → Sthaulya and Pratishyaya.',
+        chikitsa_sutra: [
+          'Kapha Shamaka: pungent, bitter, astringent tastes recommended',
+          'Avoid cold, heavy, sweet, and oily foods',
+          'Recommended: Trikatu Churna, Guggulu, Punarnava',
+          'Udvartana (dry powder massage) to stimulate metabolism',
+          'Kapalbhati Pranayama and vigorous morning exercise',
+        ],
+        triage_priority: 'Routine',
+        confidence_score: 0.88,
+        timestamp,
+      },
+      history_of_present_illness: {
+        onset: 'Gradual onset over the past 1-2 months with progressive worsening',
+        character: 'Persistent heaviness, lethargy, nasal congestion with sticky mucus discharge',
+        radiation: 'Diffuse body heaviness, particularly lower limbs',
+        associated_symptoms: ['Low appetite', 'Excess sleep', 'Mild weight gain', 'Morning congestion'],
+        duration: '1-2 months progressively worsening',
+        severity: '4',
+        aggravating_relieving_factors: 'Worsened by cold and damp weather; improved with warmth and activity',
+      },
+      past_medical_history: { conditions: ['Obesity tendency', 'Seasonal allergic rhinitis'], surgeries: [] },
+      medications_and_allergies: {
+        current_medications: [{ name: 'Sitopaladi Churna', dose: '3g TDS', indication: 'Respiratory mucus clearance' }],
+        allergies: 'NKDA',
+      },
+      extracted_lab_values: [],
+      red_flags_detected: [],
+      triage_priority: 'Routine',
+      confidence_score: 0.88,
+    };
+  }
+
+  // Default: Vata-dominant scenario (Pain, anxiety, dryness, irregular symptoms)
+  return {
+    chief_complaint: 'Variable joint pain, anxiety, dry skin and irregular digestion — Vata imbalance',
+    ayush_assessment: {
+      prakriti: dashawidha.prakriti || 'Vata Dominant',
+      vikriti: 'Vata aggravation — Vataja Sandhishoola (Joint pain), Chittodvega (Anxiety)',
+      agni: dashawidha.agni || 'Vishama Agni (Irregular, variable digestive fire)',
+      koshtha: dashawidha.koshtha || 'Krura Koshtha (Dry, constipated tendency)',
+      bala: dashawidha.bala || 'Avara-Madhyama Bala — low to moderate strength',
+      sara: dashawidha.sara || 'Asthi Sara (Bone constitution dominant)',
+      samhanana: dashawidha.samhanana || 'Lean, thin frame (Hina Samhanana)',
+      satmya: dashawidha.satmya || 'Warm, unctuous (Snigdha) foods well-tolerated',
+      sattva: dashawidha.sattva || 'Madhyama Sattva — moderate anxiety tendency',
+      vaya: dashawidha.vaya || 'Jara Vaya (60+ years) or Vata-aggravated youth',
+      nidana: [
+        'Excessive physical and mental exertion (Ativyayama)',
+        'Dry, cold, light, and rough food intake',
+        'Irregular sleep patterns and late nights',
+        'Suppressed natural urges (Vegadharana)',
+        'Excessive stress and worry',
+      ],
+      samprapti: 'Vata aggravation → Vata Prakopa → Sandhishoola and Dhatukshaya (tissue depletion). Pranic imbalance affecting Shleshaka Kapha in joints.',
+      chikitsa_sutra: [
+        'Vata Shamaka: sweet, sour, salty tastes and warm unctuous foods',
+        'Abhyanga (oil massage) with Mahanarayana or Bala Taila',
+        'Recommended: Ashwagandha, Bala, Shatavari for Rasayana therapy',
+        'Basti (medicated enema) — prime treatment for Vata disorders',
+        'Nadi Shodhana Pranayama and gentle yoga (Yin yoga)',
+      ],
+      triage_priority: 'Routine',
+      confidence_score: 0.89,
+      timestamp,
+    },
+    history_of_present_illness: {
+      onset: 'Variable and intermittent onset over several months',
+      character: 'Migratory joint pain with crackling sounds, anxiety, and insomnia',
+      radiation: 'Migratory — shifting between knees, lower back, and fingers',
+      associated_symptoms: ['Dry skin', 'Constipation', 'Insomnia', 'Anxiety'],
+      duration: 'Several months, waxing and waning',
+      severity: '5',
+      aggravating_relieving_factors: 'Worsened by cold, dry weather and stress; relieved by warmth and rest',
+    },
+    past_medical_history: { conditions: ['Vataja Sandhivata (Osteoarthritis tendency)'], surgeries: [] },
+    medications_and_allergies: {
+      current_medications: [{ name: 'Ashwagandha Churna', dose: '5g OD with warm milk', indication: 'Vata Shamaka Rasayana' }],
+      allergies: 'NKDA',
+    },
+    extracted_lab_values: [],
+    red_flags_detected: [],
+    triage_priority: 'Routine',
+    confidence_score: 0.89,
+  };
+}
+
+/**
+ * Structure AYUSH patient history using Dashawidha Pariksha via Gemini or offline mock
+ * @param {string} transcription - Raw voice transcript
+ * @param {Object} dashawidhaData - Dashawidha Pariksha form responses from InterviewScreen
+ * @returns {Promise<Object>} Structured AYUSH clinical history
+ */
+export async function structureAyushHistory(transcription, dashawidhaData = {}) {
+  if (!transcription || transcription.trim().length === 0) {
+    throw new Error('Patient input cannot be empty');
+  }
+
+  // Offline fallback if no API key
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '' || GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    console.info('[Gemini AYUSH] No valid API key. Using offline Dashawidha mock.');
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return getOfflineMockAyush(transcription, dashawidhaData);
+  }
+
+  const dashawidhaContext = Object.entries(dashawidhaData)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
+    .join('\n');
+
+  const prompt = `${AYUSH_SYSTEM_PROMPT}
+
+Patient's Spoken Complaint:
+"${transcription.trim()}"
+
+Dashawidha Pariksha Responses (10-Factor Ayurvedic Assessment):
+${dashawidhaContext || 'Not provided by patient'}
+
+Structure this into the following JSON schema. Respond ONLY with valid JSON, no markdown:
+{
+  "chief_complaint": "Main Ayurvedic complaint in clinical terms",
+  "ayush_assessment": {
+    "prakriti": "Body constitution (Vata/Pitta/Kapha dominant or combination)",
+    "vikriti": "Current imbalance / disease pattern in Ayurvedic terms",
+    "agni": "Digestive fire assessment (Sama/Vishama/Tikshna/Manda Agni)",
+    "koshtha": "Bowel nature (Krura/Mridu/Madhyama Koshtha)",
+    "bala": "Physical strength assessment",
+    "sara": "Tissue quality / constitution",
+    "samhanana": "Body frame and compactness",
+    "satmya": "Tolerance / adaptability",
+    "sattva": "Mental strength and emotional constitution",
+    "vaya": "Age and life-stage assessment",
+    "nidana": ["causative factor 1", "causative factor 2"],
+    "samprapti": "Pathogenesis / disease progression in Ayurvedic terms",
+    "chikitsa_sutra": ["treatment principle 1", "treatment principle 2"],
+    "triage_priority": "Routine | Urgent | Emergency",
+    "confidence_score": 0.90
+  },
+  "history_of_present_illness": {
+    "onset": "When and how it started",
+    "character": "Nature of symptom",
+    "radiation": "Spread pattern",
+    "associated_symptoms": ["symptom1"],
+    "duration": "Duration",
+    "severity": "0-10 or Not specified",
+    "aggravating_relieving_factors": "What worsens or relieves"
+  },
+  "past_medical_history": { "conditions": [], "surgeries": [] },
+  "medications_and_allergies": {
+    "current_medications": [{ "name": "", "dose": "", "indication": "" }],
+    "allergies": "NKDA"
+  },
+  "extracted_lab_values": [],
+  "red_flags_detected": [],
+  "triage_priority": "Routine | Urgent | Emergency",
+  "confidence_score": 0.90
+}`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, topK: 40, topP: 0.95, maxOutputTokens: 2500 },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`[Gemini AYUSH] Request failed (${response.status}). Falling back to offline mock.`);
+      return getOfflineMockAyush(transcription, dashawidhaData);
+    }
+
+    const data = await response.json();
+    if (!data.candidates?.[0]) {
+      return getOfflineMockAyush(transcription, dashawidhaData);
+    }
+
+    const responseText = data.candidates[0].content.parts[0].text;
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return getOfflineMockAyush(transcription, dashawidhaData);
+    }
+
+    return JSON.parse(jsonMatch[0]);
+  } catch (error) {
+    console.warn('[Gemini AYUSH] Network error. Falling back to offline mock:', error.message);
+    return getOfflineMockAyush(transcription, dashawidhaData);
+  }
+}

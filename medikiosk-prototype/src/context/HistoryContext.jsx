@@ -11,6 +11,9 @@ const INITIAL_STATE = {
   language: 'en-IN',
   timestamp: new Date().toISOString(),
 
+  // Medical mode: 'allopathy' | 'ayush'
+  mode: 'allopathy',
+
   // Captured voice/touch data
   rawTranscript: '',
   selectedSymptoms: [],
@@ -22,6 +25,20 @@ const INITIAL_STATE = {
     duration: '',
     associated: [],
     aggravatingRelieving: '',
+  },
+
+  // AYUSH Dashawidha Pariksha responses (used when mode === 'ayush')
+  dashawidhaResponses: {
+    prakriti: '',
+    vikriti: '',
+    agni: '',
+    koshtha: '',
+    bala: '',
+    sara: '',
+    samhanana: '',
+    satmya: '',
+    sattva: '',
+    vaya: '',
   },
 
   // Structured clinical data (populated by Gemini or offline mock)
@@ -48,6 +65,9 @@ const INITIAL_STATE = {
   },
 
   priorLabValues: [],
+
+  // AYUSH structured output (populated by Gemini AYUSH mode)
+  ayushAssessment: null,
 
   // Documents
   uploadedDocuments: [],
@@ -110,6 +130,8 @@ export function HistoryProvider({ children }) {
       triagePriority: structuredData.triage_priority || prev.triagePriority,
       redFlags: structuredData.red_flags_detected || prev.redFlags,
       confidenceScore: structuredData.confidence_score || 0,
+      // Store AYUSH assessment if present (returned when mode === 'ayush')
+      ayushAssessment: structuredData.ayush_assessment || prev.ayushAssessment,
     }));
   }, []);
 

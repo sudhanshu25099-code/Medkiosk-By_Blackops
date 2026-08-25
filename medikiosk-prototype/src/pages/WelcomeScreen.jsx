@@ -7,11 +7,33 @@ const LANGUAGES = [
   { code: 'en-IN', label: 'English', sublabel: 'English (India)' },
 ];
 
+const MEDICAL_MODES = [
+  {
+    code: 'allopathy',
+    icon: '🩺',
+    label: 'Allopathy',
+    sublabel: 'Modern Medicine (SOCRATES)',
+    desc: 'Standard clinical history using SOCRATES framework',
+    color: 'border-[#3B52E1] bg-[#3B52E1]',
+    idle: 'border-slate-200 hover:border-[#3B52E1] hover:text-[#3B52E1]',
+  },
+  {
+    code: 'ayush',
+    icon: '🌿',
+    label: 'AYUSH',
+    sublabel: 'Ayurveda OPD (Dashawidha)',
+    desc: 'Ayurvedic 10-factor Dashawidha Pariksha assessment',
+    color: 'border-emerald-600 bg-emerald-600',
+    idle: 'border-slate-200 hover:border-emerald-600 hover:text-emerald-700',
+  },
+];
+
 export default function WelcomeScreen() {
   const navigate = useNavigate();
   const { setHistory, history } = useContext(HistoryContext);
 
-  const [selectedLang, setSelectedLang] = useState('en-IN');
+  const [selectedLang, setSelectedLang] = useState(history.language || 'en-IN');
+  const [selectedMode, setSelectedMode] = useState(history.mode || 'allopathy');
   const [abhaId, setAbhaId] = useState('');
   const [patientName, setPatientName] = useState('');
   const [consentChecked, setConsentChecked] = useState(false);
@@ -21,6 +43,12 @@ export default function WelcomeScreen() {
     setSelectedLang(code);
     setHistory((prev) => ({ ...prev, language: code }));
   };
+
+  const handleModeSelect = (code) => {
+    setSelectedMode(code);
+    setHistory((prev) => ({ ...prev, mode: code }));
+  };
+
 
   const handleProceed = () => {
     if (!consentChecked) {
@@ -33,6 +61,7 @@ export default function WelcomeScreen() {
       abhaId: abhaId.trim(),
       patientName: patientName.trim() || 'Patient',
       language: selectedLang,
+      mode: selectedMode,
       timestamp: new Date().toISOString(),
     }));
     navigate('/interview');
@@ -74,12 +103,57 @@ export default function WelcomeScreen() {
           </div>
         </div>
 
+        {/* ── Medical Mode Selector ── */}
+        <div className="card border border-slate-200">
+          <h2 className="text-base font-semibold text-clinical-gray mb-1 flex items-center gap-2">
+            <span>Select Medical Framework</span>
+            <span className="text-xs font-normal text-neutral-gray">(determines intake protocol)</span>
+          </h2>
+          <div className="flex gap-3 mt-3">
+            {MEDICAL_MODES.map((m) => {
+              const isActive = selectedMode === m.code;
+              return (
+                <button
+                  key={m.code}
+                  onClick={() => handleModeSelect(m.code)}
+                  aria-pressed={isActive}
+                  className={`flex-1 py-3 px-4 rounded-xl border-2 text-left transition-all duration-150 shadow-sm
+                    ${isActive
+                      ? `${m.color} text-white shadow-md scale-[1.02]`
+                      : `bg-white ${m.idle} text-slate-700`
+                    }`}
+                >
+                  <div className="text-2xl mb-1">{m.icon}</div>
+                  <div className="text-sm font-bold">{m.label}</div>
+                  <div className={`text-[11px] font-medium mt-0.5 ${isActive ? 'text-white/80' : 'text-slate-500'}`}>
+                    {m.sublabel}
+                  </div>
+                  <div className={`text-[10px] mt-1 leading-tight ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
+                    {m.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {selectedMode === 'ayush' && (
+            <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800 font-medium flex items-start gap-2">
+              <span className="text-base leading-none">🌿</span>
+              <span>
+                <strong>AYUSH Mode selected.</strong> The intake will follow the Dashawidha Pariksha 
+                (10-Factor Ayurvedic Assessment): Prakriti, Vikriti, Agni, Koshtha, Bala, Sara, 
+                Samhanana, Satmya, Sattva &amp; Vaya.
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* ABHA Authentication (Simulated) */}
         <div className="card">
           <h2 className="text-base font-semibold text-clinical-gray mb-1">
             Patient Identification
             <span className="ml-2 text-xs text-neutral-gray font-normal">(Simulated for Demo)</span>
           </h2>
+
 
           <div className="flex flex-col gap-3 mt-3">
             <div>
