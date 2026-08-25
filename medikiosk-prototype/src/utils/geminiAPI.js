@@ -212,47 +212,15 @@ function getOfflineMockHistory(input, socratesData = null) {
  * @returns {Object} Extracted clinical entities
  */
 function getOfflineMockEntities(ocrText) {
-  const lower = (ocrText || '').toLowerCase();
-
-  // If OCR text mentions diabetes or glucose
-  if (lower.includes('diabetes') || lower.includes('glucose') || lower.includes('sugar') || lower.includes('metformin')) {
-    return {
-      diagnoses: [
-        "Type 2 Diabetes Mellitus",
-        "Essential Hypertension"
-      ],
-      medications: [
-        { name: "Metformin Hydrochloride", dose: "500mg", frequency: "Twice daily after meals" },
-        { name: "Amlodipine Besylate", dose: "5mg", frequency: "Once daily in morning" },
-        { name: "Atorvastatin Calcium", dose: "10mg", frequency: "Once daily at bedtime" }
-      ],
-      lab_results: [
-        { test: "Fasting Blood Sugar (FBS)", value: "156 mg/dL", reference_range: "70-100 mg/dL", status: "Abnormal" },
-        { test: "HbA1c (Glycated Hemoglobin)", value: "8.2%", reference_range: "< 5.7%", status: "Abnormal" },
-        { test: "Blood Pressure", value: "148/92 mmHg", reference_range: "< 120/80 mmHg", status: "Abnormal" }
-      ],
-      document_type: "Hospital OPD Prescription & Diagnostic Report",
-      document_date: "15 Jan 2026"
-    };
-  }
-
-  // Default standard prescription OCR mock
+  // Return an empty extraction baseline to prevent hallucinating lab values, 
+  // medications, or diagnoses that aren't actually in the document.
   return {
-    diagnoses: [
-      "Essential Hypertension (Grade 1)",
-      "Mild Tension-Type Cephalea"
-    ],
-    medications: [
-      { name: "Amlodipine", dose: "5mg", frequency: "1 tablet OD (Morning)" },
-      { name: "Paracetamol", dose: "650mg", frequency: "SOS (Pain/Fever)" }
-    ],
-    lab_results: [
-      { test: "Blood Pressure (Sitting)", value: "150/90 mmHg", reference_range: "120/80 mmHg", status: "Abnormal" },
-      { test: "Hemoglobin (Hb)", value: "13.2 g/dL", reference_range: "12.0 - 15.5 g/dL", status: "Normal" },
-      { test: "Serum TSH", value: "2.3 mIU/L", reference_range: "0.4 - 4.5 mIU/L", status: "Normal" }
-    ],
-    document_type: "Prescription Slip & Vitals Chart",
-    document_date: "2026-02-10"
+    diagnoses: [],
+    medications: [],
+    lab_results: [],
+    clinical_notes: null,
+    document_type: null,
+    document_date: null
   };
 }
 
@@ -394,20 +362,34 @@ export async function extractClinicalEntities(ocrText) {
     return getOfflineMockEntities(ocrText);
   }
 
-  const prompt = `Extract clinical entities from this medical document text:
-"${ocrText}"
+  const prompt = `You are an expert medical information extraction assistant for an Indian hospital OPD system.
+Extract ALL clinical entities from the following medical document text with maximum accuracy.
 
-Return ONLY valid JSON, no markdown:
+Document Text:
+"""${ocrText}"""
+
+Extraction Rules:
+1. Extract every diagnosis, condition, and clinical finding mentioned
+2. For medications: capture full name, dose, frequency, route (oral/IV/etc.), and duration if stated
+3. For lab results: include test name, value, unit, reference range, and flag as Normal/Abnormal
+4. Capture vital signs as lab results (BP, HR, SpO2, Temperature, Weight, BMI)
+5. Identify the document type accurately (Prescription, Lab Report, Discharge Summary, Radiology Report, OPD Visit Note)
+6. Extract the document date or visit date if present
+7. Include any doctor's notes, follow-up instructions, or special advice in "clinical_notes"
+8. If data is missing or unclear, use null — do NOT hallucinate values
+
+Return ONLY valid JSON with no markdown or extra text:
 {
-  "diagnoses": ["diagnosis1"],
+  "diagnoses": ["Full diagnosis name with ICD context if mentioned"],
   "medications": [
-    { "name": "Medicine", "dose": "Dose", "frequency": "Times per day" }
+    { "name": "Medicine name", "dose": "Dose with unit", "frequency": "e.g. Once daily (OD)", "route": "Oral/IV/Topical", "duration": "e.g. 5 days" }
   ],
   "lab_results": [
-    { "test": "Test name", "value": "Value", "reference_range": "Normal range", "status": "Normal or Abnormal" }
+    { "test": "Test name", "value": "Result value", "unit": "Unit", "reference_range": "Normal range", "status": "Normal or Abnormal" }
   ],
-  "document_type": "Prescription or Lab Report or Discharge Summary",
-  "document_date": "Date if mentioned"
+  "clinical_notes": "Any doctor instructions, follow-up dates, lifestyle advice, or special notes",
+  "document_type": "Prescription | Lab Report | Discharge Summary | Radiology Report | OPD Note",
+  "document_date": "Detected date or null"
 }`;
 
   try {
@@ -438,5 +420,450 @@ Return ONLY valid JSON, no markdown:
   } catch (error) {
     console.warn('[Gemini API] Error extracting entities via API. Falling back to offline entity mock:', error.message);
     return getOfflineMockEntities(ocrText);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AYUSH DASHAWIDHA PARIKSHA MODE
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AYUSH_SYSTEM_PROMPT = `You are an expert Ayurvedic clinical historian operating in an AYUSH OPD in India.
+Your task is to take the patient's spoken complaint and their Dashawidha Pariksha responses, 
+and structure them into a comprehensive Ayurvedic clinical record.
+
+Follow these rules:
+1. Use the Dashawidha Pariksha (10-Factor Ayurvedic Assessment) framework
+2. Identify Prakriti (constitutional type: Vata/Pitta/Kapha or combination)
+3. Identify Vikriti (current imbalance/disease pattern)
+4. Assess Agni (digestive fire: Sama/Vishama/Tikshna/Manda)
+5. Assess Koshtha (bowel nature: Krura/Mridu/Madhyama)
+6. If a factor is not mentioned, output "Not specified"
+7. Provide a gentle, holistic triage priority (Routine/Urgent/Emergency)
+8. Always output valid JSON only`;
+
+/**
+ * Generate offline mock AYUSH Dashawidha assessment based on prakriti
+ * @param {string} transcript - Patient voice transcript
+ * @param {Object} dashawidha - Dashawidha Pariksha form responses
+ * @returns {Object} Structured AYUSH clinical JSON
+ */
+function getOfflineMockAyush(transcript, dashawidha = {}) {
+  const lower = (transcript || '').toLowerCase();
+  const prakriti = (dashawidha.prakriti || '').toLowerCase();
+  const timestamp = new Date().toISOString();
+
+  // Pitta-dominant scenario (Heat, inflammation, anger, burning symptoms)
+  if (
+    prakriti.includes('pitta') ||
+    lower.includes('burning') || lower.includes('acid') ||
+    lower.includes('anger') || lower.includes('inflammation') || lower.includes('fever')
+  ) {
+    return {
+      chief_complaint: 'Burning gastric discomfort with irritability and heat sensitivity',
+      ayush_assessment: {
+        prakriti: dashawidha.prakriti || 'Pitta-Kapha Dominant',
+        vikriti: 'Elevated Pitta — Hyperacidity, Pittaja Jvara (Inflammatory fever pattern)',
+        agni: dashawidha.agni || 'Tikshna Agni (Sharp, hyperactive digestive fire)',
+        koshtha: dashawidha.koshtha || 'Mridu Koshtha (Soft, loose bowel tendency)',
+        bala: dashawidha.bala || 'Moderate — Madhyama Bala',
+        sara: dashawidha.sara || 'Mamsa Sara (Muscular constitution)',
+        samhanana: dashawidha.samhanana || 'Compact, medium frame (Madhyama Samhanana)',
+        satmya: dashawidha.satmya || 'Partial tolerance — Pitta-aggravating foods contraindicated',
+        sattva: dashawidha.sattva || 'Madhyama Sattva — moderate mental resilience',
+        vaya: dashawidha.vaya || 'Madhya Vaya (Middle age — 35-55 years)',
+        nidana: [
+          'Excessive intake of spicy, sour, and fermented foods',
+          'Irregular meal timing',
+          'Exposure to excessive heat and direct sunlight',
+          'Suppressed anger and emotional stress',
+        ],
+        samprapti: 'Pitta aggravation → Hyperacidity → Amlapitta (Gastritis) pathway. Pitta vitiation affecting Pakwashaya (colon) and Amashaya (stomach).',
+        chikitsa_sutra: [
+          'Pitta Shamaka diet: sweet, bitter, astringent tastes',
+          'Avoid spicy, sour, fermented, and processed foods',
+          'Recommended: Amalaki Churna, Shatavari, Yashtimadhu (Licorice)',
+          'Avoid Virechana until inflammatory phase subsides',
+          'Sheetali Pranayama and cooling lifestyle modifications',
+        ],
+        triage_priority: 'Routine',
+        confidence_score: 0.91,
+        timestamp,
+      },
+      history_of_present_illness: {
+        onset: 'Gradual onset over the past 2 weeks, worsening with diet irregularity',
+        character: 'Burning retrosternal and epigastric discomfort with acid regurgitation',
+        radiation: 'Localized to epigastric region with occasional referred throat burning',
+        associated_symptoms: ['Acid belching', 'Irritability', 'Low-grade fever', 'Loss of appetite'],
+        duration: '2 weeks progressively worsening',
+        severity: '5',
+        aggravating_relieving_factors: 'Worsened by spicy food, alcohol, stress; relieved by cool water and rest',
+      },
+      past_medical_history: { conditions: ['Recurrent Hyperacidity (Amlapitta)'], surgeries: [] },
+      medications_and_allergies: {
+        current_medications: [{ name: 'Avipattikar Churna', dose: '5g BD', indication: 'Hyperacidity control' }],
+        allergies: 'NKDA',
+      },
+      extracted_lab_values: [],
+      red_flags_detected: ['Monitor for Pittaja Prameha (diabetic tendency) given chronic dietary pattern'],
+      triage_priority: 'Routine',
+      confidence_score: 0.91,
+    };
+  }
+
+  // Kapha-dominant scenario (Lethargy, congestion, heaviness, weight gain)
+  if (
+    prakriti.includes('kapha') ||
+    lower.includes('lethargy') || lower.includes('weight') ||
+    lower.includes('congestion') || lower.includes('cough') || lower.includes('heavy')
+  ) {
+    return {
+      chief_complaint: 'Heaviness, lethargy, and chronic nasal congestion with low appetite',
+      ayush_assessment: {
+        prakriti: dashawidha.prakriti || 'Kapha Dominant',
+        vikriti: 'Kapha Vata aggravation — Shlaishmika Pratishyaya (Allergic Rhinitis), Sthaulya (Obesity tendency)',
+        agni: dashawidha.agni || 'Manda Agni (Slow, weak digestive fire)',
+        koshtha: dashawidha.koshtha || 'Krura Koshtha (Constipated, hard bowel tendency)',
+        bala: dashawidha.bala || 'Madhyama Bala with Kapha excess',
+        sara: dashawidha.sara || 'Meda Sara (Fatty constitution)',
+        samhanana: dashawidha.samhanana || 'Heavy, compact, broad frame (Sthula Samhanana)',
+        satmya: dashawidha.satmya || 'Tolerates cold and damp environments poorly',
+        sattva: dashawidha.sattva || 'Avara Sattva — prone to emotional lethargy',
+        vaya: dashawidha.vaya || 'Madhya Vaya (30-50 years)',
+        nidana: [
+          'Excessive daytime sleep (Divasvapna)',
+          'Sedentary lifestyle with minimal physical activity',
+          'Heavy, oily, cold, and sweet food excess',
+          'Exposure to cold and damp weather',
+        ],
+        samprapti: 'Kapha aggravation → Srotovarodha (channel blockage) → Meda Dhatu vitiation → Sthaulya and Pratishyaya.',
+        chikitsa_sutra: [
+          'Kapha Shamaka: pungent, bitter, astringent tastes recommended',
+          'Avoid cold, heavy, sweet, and oily foods',
+          'Recommended: Trikatu Churna, Guggulu, Punarnava',
+          'Udvartana (dry powder massage) to stimulate metabolism',
+          'Kapalbhati Pranayama and vigorous morning exercise',
+        ],
+        triage_priority: 'Routine',
+        confidence_score: 0.88,
+        timestamp,
+      },
+      history_of_present_illness: {
+        onset: 'Gradual onset over the past 1-2 months with progressive worsening',
+        character: 'Persistent heaviness, lethargy, nasal congestion with sticky mucus discharge',
+        radiation: 'Diffuse body heaviness, particularly lower limbs',
+        associated_symptoms: ['Low appetite', 'Excess sleep', 'Mild weight gain', 'Morning congestion'],
+        duration: '1-2 months progressively worsening',
+        severity: '4',
+        aggravating_relieving_factors: 'Worsened by cold and damp weather; improved with warmth and activity',
+      },
+      past_medical_history: { conditions: ['Obesity tendency', 'Seasonal allergic rhinitis'], surgeries: [] },
+      medications_and_allergies: {
+        current_medications: [{ name: 'Sitopaladi Churna', dose: '3g TDS', indication: 'Respiratory mucus clearance' }],
+        allergies: 'NKDA',
+      },
+      extracted_lab_values: [],
+      red_flags_detected: [],
+      triage_priority: 'Routine',
+      confidence_score: 0.88,
+    };
+  }
+
+  // Default: Vata-dominant scenario (Pain, anxiety, dryness, irregular symptoms)
+  return {
+    chief_complaint: 'Variable joint pain, anxiety, dry skin and irregular digestion — Vata imbalance',
+    ayush_assessment: {
+      prakriti: dashawidha.prakriti || 'Vata Dominant',
+      vikriti: 'Vata aggravation — Vataja Sandhishoola (Joint pain), Chittodvega (Anxiety)',
+      agni: dashawidha.agni || 'Vishama Agni (Irregular, variable digestive fire)',
+      koshtha: dashawidha.koshtha || 'Krura Koshtha (Dry, constipated tendency)',
+      bala: dashawidha.bala || 'Avara-Madhyama Bala — low to moderate strength',
+      sara: dashawidha.sara || 'Asthi Sara (Bone constitution dominant)',
+      samhanana: dashawidha.samhanana || 'Lean, thin frame (Hina Samhanana)',
+      satmya: dashawidha.satmya || 'Warm, unctuous (Snigdha) foods well-tolerated',
+      sattva: dashawidha.sattva || 'Madhyama Sattva — moderate anxiety tendency',
+      vaya: dashawidha.vaya || 'Jara Vaya (60+ years) or Vata-aggravated youth',
+      nidana: [
+        'Excessive physical and mental exertion (Ativyayama)',
+        'Dry, cold, light, and rough food intake',
+        'Irregular sleep patterns and late nights',
+        'Suppressed natural urges (Vegadharana)',
+        'Excessive stress and worry',
+      ],
+      samprapti: 'Vata aggravation → Vata Prakopa → Sandhishoola and Dhatukshaya (tissue depletion). Pranic imbalance affecting Shleshaka Kapha in joints.',
+      chikitsa_sutra: [
+        'Vata Shamaka: sweet, sour, salty tastes and warm unctuous foods',
+        'Abhyanga (oil massage) with Mahanarayana or Bala Taila',
+        'Recommended: Ashwagandha, Bala, Shatavari for Rasayana therapy',
+        'Basti (medicated enema) — prime treatment for Vata disorders',
+        'Nadi Shodhana Pranayama and gentle yoga (Yin yoga)',
+      ],
+      triage_priority: 'Routine',
+      confidence_score: 0.89,
+      timestamp,
+    },
+    history_of_present_illness: {
+      onset: 'Variable and intermittent onset over several months',
+      character: 'Migratory joint pain with crackling sounds, anxiety, and insomnia',
+      radiation: 'Migratory — shifting between knees, lower back, and fingers',
+      associated_symptoms: ['Dry skin', 'Constipation', 'Insomnia', 'Anxiety'],
+      duration: 'Several months, waxing and waning',
+      severity: '5',
+      aggravating_relieving_factors: 'Worsened by cold, dry weather and stress; relieved by warmth and rest',
+    },
+    past_medical_history: { conditions: ['Vataja Sandhivata (Osteoarthritis tendency)'], surgeries: [] },
+    medications_and_allergies: {
+      current_medications: [{ name: 'Ashwagandha Churna', dose: '5g OD with warm milk', indication: 'Vata Shamaka Rasayana' }],
+      allergies: 'NKDA',
+    },
+    extracted_lab_values: [],
+    red_flags_detected: [],
+    triage_priority: 'Routine',
+    confidence_score: 0.89,
+  };
+}
+
+/**
+ * Structure AYUSH patient history using Dashawidha Pariksha via Gemini or offline mock
+ * @param {string} transcription - Raw voice transcript
+ * @param {Object} dashawidhaData - Dashawidha Pariksha form responses from InterviewScreen
+ * @returns {Promise<Object>} Structured AYUSH clinical history
+ */
+export async function structureAyushHistory(transcription, dashawidhaData = {}) {
+  if (!transcription || transcription.trim().length === 0) {
+    throw new Error('Patient input cannot be empty');
+  }
+
+  // Offline fallback if no API key
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '' || GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    console.info('[Gemini AYUSH] No valid API key. Using offline Dashawidha mock.');
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return getOfflineMockAyush(transcription, dashawidhaData);
+  }
+
+  const dashawidhaContext = Object.entries(dashawidhaData)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
+    .join('\n');
+
+  const prompt = `${AYUSH_SYSTEM_PROMPT}
+
+Patient's Spoken Complaint:
+"${transcription.trim()}"
+
+Dashawidha Pariksha Responses (10-Factor Ayurvedic Assessment):
+${dashawidhaContext || 'Not provided by patient'}
+
+Structure this into the following JSON schema. Respond ONLY with valid JSON, no markdown:
+{
+  "chief_complaint": "Main Ayurvedic complaint in clinical terms",
+  "ayush_assessment": {
+    "prakriti": "Body constitution (Vata/Pitta/Kapha dominant or combination)",
+    "vikriti": "Current imbalance / disease pattern in Ayurvedic terms",
+    "agni": "Digestive fire assessment (Sama/Vishama/Tikshna/Manda Agni)",
+    "koshtha": "Bowel nature (Krura/Mridu/Madhyama Koshtha)",
+    "bala": "Physical strength assessment",
+    "sara": "Tissue quality / constitution",
+    "samhanana": "Body frame and compactness",
+    "satmya": "Tolerance / adaptability",
+    "sattva": "Mental strength and emotional constitution",
+    "vaya": "Age and life-stage assessment",
+    "nidana": ["causative factor 1", "causative factor 2"],
+    "samprapti": "Pathogenesis / disease progression in Ayurvedic terms",
+    "chikitsa_sutra": ["treatment principle 1", "treatment principle 2"],
+    "triage_priority": "Routine | Urgent | Emergency",
+    "confidence_score": 0.90
+  },
+  "history_of_present_illness": {
+    "onset": "When and how it started",
+    "character": "Nature of symptom",
+    "radiation": "Spread pattern",
+    "associated_symptoms": ["symptom1"],
+    "duration": "Duration",
+    "severity": "0-10 or Not specified",
+    "aggravating_relieving_factors": "What worsens or relieves"
+  },
+  "past_medical_history": { "conditions": [], "surgeries": [] },
+  "medications_and_allergies": {
+    "current_medications": [{ "name": "", "dose": "", "indication": "" }],
+    "allergies": "NKDA"
+  },
+  "extracted_lab_values": [],
+  "red_flags_detected": [],
+  "triage_priority": "Routine | Urgent | Emergency",
+  "confidence_score": 0.90
+}`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, topK: 40, topP: 0.95, maxOutputTokens: 2500 },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`[Gemini AYUSH] Request failed (${response.status}). Falling back to offline mock.`);
+      return getOfflineMockAyush(transcription, dashawidhaData);
+    }
+
+    const data = await response.json();
+    if (!data.candidates?.[0]) {
+      return getOfflineMockAyush(transcription, dashawidhaData);
+    }
+
+    const responseText = data.candidates[0].content.parts[0].text;
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return getOfflineMockAyush(transcription, dashawidhaData);
+    }
+
+    return JSON.parse(jsonMatch[0]);
+  } catch (error) {
+    console.warn('[Gemini AYUSH] Network error. Falling back to offline mock:', error.message);
+    return getOfflineMockAyush(transcription, dashawidhaData);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLINICAL DOCUMENT SUMMARIZATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate offline document summary fallback from extracted entities
+ * @param {Object} entities - Output from extractClinicalEntities
+ * @param {string} rawOcrText - Raw OCR text
+ * @returns {string} Formatted summary paragraph
+ */
+function getOfflineSummary(entities, rawOcrText) {
+  const parts = [];
+
+  if (entities?.document_type) {
+    parts.push(`This is a ${entities.document_type}${entities.document_date ? ` dated ${entities.document_date}` : ''}.`);
+  } else {
+    parts.push('This medical document has been analysed.');
+  }
+
+  if (entities?.diagnoses?.length > 0) {
+    parts.push(`Diagnoses recorded: ${entities.diagnoses.join(', ')}.`);
+  }
+
+  if (entities?.medications?.length > 0) {
+    const medList = entities.medications
+      .map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` (${m.frequency})` : ''}`)
+      .join(', ');
+    parts.push(`Current medications: ${medList}.`);
+  }
+
+  const abnormal = (entities?.lab_results || []).filter(
+    (l) => l.status?.toLowerCase() === 'abnormal'
+  );
+  const normal = (entities?.lab_results || []).filter(
+    (l) => l.status?.toLowerCase() !== 'abnormal'
+  );
+
+  if (abnormal.length > 0) {
+    const flags = abnormal.map((l) => `${l.test}: ${l.value}${l.unit ? ` ${l.unit}` : ''}`).join(', ');
+    parts.push(`⚠ Abnormal findings require clinical attention: ${flags}.`);
+  }
+  if (normal.length > 0) {
+    parts.push(`Normal results: ${normal.map((l) => l.test).join(', ')}.`);
+  }
+
+  if (entities?.clinical_notes) {
+    parts.push(`Clinical notes: ${entities.clinical_notes}`);
+  }
+
+  if (parts.length === 0 && rawOcrText) {
+    return `Document analysed. Extracted text: "${rawOcrText.substring(0, 200)}${rawOcrText.length > 200 ? '…' : ''}"`;
+  }
+
+  return parts.join(' ');
+}
+
+/**
+ * Summarize an extracted medical document into a concise clinical paragraph.
+ * Uses Gemini API when available; falls back to structured offline summary.
+ *
+ * @param {Object} entities   - Structured entities from extractClinicalEntities
+ * @param {string} rawOcrText - Original OCR text for context
+ * @param {string} [mode]     - 'allopathy' | 'ayush' — affects summary framing
+ * @returns {Promise<string>} Clinical summary paragraph
+ */
+export async function summarizeClinicalDocument(entities, rawOcrText = '', mode = 'allopathy') {
+  // Offline fallback — no API key
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '' || GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    console.info('[Gemini Summary] No API key — using structured offline summary.');
+    await new Promise((r) => setTimeout(r, 400));
+    return getOfflineSummary(entities, rawOcrText);
+  }
+
+  const entitiesJson = JSON.stringify(entities, null, 2);
+  const isAyush = mode === 'ayush';
+
+  const prompt = isAyush
+    ? `You are an Ayurvedic clinical assistant summarizing a medical document for a Vaidya (AYUSH physician) in India.
+Given the structured extracted data from a patient's medical document, write a concise, holistic clinical summary paragraph (3–5 sentences).
+Include any diagnoses, medications, and notable findings. Frame findings in both modern and Ayurvedic context where applicable.
+IMPORTANT: Do NOT hallucinate or mention any diagnoses, lab values, or medications that are not explicitly present in the data.
+Do not add any headings, bullet points, or JSON — plain paragraph text only.
+
+Extracted Data:
+${entitiesJson}
+
+Raw Document Text (for context):
+"${rawOcrText?.substring(0, 800) || 'Not available'}"
+
+Write the Ayurvedic clinical summary now:`
+    : `You are a clinical documentation assistant summarizing a medical document for an attending physician in an Indian hospital OPD.
+Given the structured extracted data from a patient's prior medical document, write a concise, professional clinical summary paragraph (3–5 sentences).
+Highlight key diagnoses, active medications with doses, abnormal lab findings, and any follow-up instructions.
+IMPORTANT: Do NOT hallucinate or mention any diagnoses, lab values, or medications that are not explicitly present in the data.
+Use standard medical terminology. Do not add headings, bullet points, or JSON — plain paragraph only.
+
+Extracted Structured Data:
+${entitiesJson}
+
+Raw Document Text (for additional context):
+"${rawOcrText?.substring(0, 800) || 'Not available'}"
+
+Write the clinical summary now:`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 500,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`[Gemini Summary] Request failed (${response.status}). Using offline summary.`);
+      return getOfflineSummary(entities, rawOcrText);
+    }
+
+    const data = await response.json();
+    const summaryText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!summaryText) {
+      return getOfflineSummary(entities, rawOcrText);
+    }
+
+    console.info('[Gemini Summary] Summary generated successfully.');
+    return summaryText;
+  } catch (error) {
+    console.warn('[Gemini Summary] Network error. Using offline summary:', error.message);
+    return getOfflineSummary(entities, rawOcrText);
   }
 }

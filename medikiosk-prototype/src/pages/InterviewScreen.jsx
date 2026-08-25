@@ -15,11 +15,12 @@ import {
   HelpCircle, 
   Layers,
   Sparkles,
-  Flame
+  Flame,
+  Leaf
 } from 'lucide-react';
 import { HistoryContext } from '../context/HistoryContext';
 import { initiateSpeechRecognition } from '../utils/speechRecognition';
-import { structureHistory } from '../utils/geminiAPI';
+import { structureHistory, structureAyushHistory } from '../utils/geminiAPI';
 
 const COMMON_SYMPTOMS = [
   'Fever', 'Cough', 'Headache', 'Chest Pain',
@@ -73,6 +74,80 @@ const FACTORS_OPTIONS = [
   { label: 'Constant (No relieving factors)', value: 'Constant intensity with no identifiable relieving factors' },
 ];
 
+// Dashawidha Pariksha 10-Factor Ayurvedic Assessment (used when mode === 'ayush')
+const DASHAWIDHA_FACTORS = [
+  {
+    key: 'prakriti',
+    label: 'Prakriti (Body Constitution)',
+    sublabel: 'Your natural body type since birth',
+    icon: '🌀',
+    options: ['Vata Dominant (Lean, dry, quick, anxious)', 'Pitta Dominant (Medium, sharp, hot, intense)', 'Kapha Dominant (Heavy, calm, slow, strong)', 'Vata-Pitta (Lean + Sharp)', 'Pitta-Kapha (Medium + Heavy)', 'Vata-Kapha (Lean + Heavy)', 'Tridoshic (Balanced all three)'],
+  },
+  {
+    key: 'vikriti',
+    label: 'Vikriti (Current Imbalance)',
+    sublabel: 'How is your body feeling different from usual?',
+    icon: '⚖️',
+    options: ['Vata aggravated (Dryness, anxiety, pain)', 'Pitta aggravated (Heat, acidity, anger)', 'Kapha aggravated (Heaviness, lethargy, mucus)', 'Vata-Pitta imbalance', 'Pitta-Kapha imbalance', 'Vata-Kapha imbalance', 'No clear imbalance'],
+  },
+  {
+    key: 'agni',
+    label: 'Agni (Digestive Fire)',
+    sublabel: 'How is your digestion?',
+    icon: '🔥',
+    options: ['Sama Agni (Regular, balanced digestion)', 'Vishama Agni (Irregular, variable appetite)', 'Tikshna Agni (Sharp, excessive hunger, acidity)', 'Manda Agni (Slow, weak, heavy after meals)'],
+  },
+  {
+    key: 'koshtha',
+    label: 'Koshtha (Bowel Nature)',
+    sublabel: 'How are your bowel movements?',
+    icon: '🌊',
+    options: ['Krura Koshtha (Hard, constipated)', 'Mridu Koshtha (Soft, loose stools)', 'Madhyama Koshtha (Regular, 1-2 times/day)'],
+  },
+  {
+    key: 'bala',
+    label: 'Bala (Physical Strength)',
+    sublabel: 'Your energy and physical capacity',
+    icon: '💪',
+    options: ['Pravara Bala (Strong — tolerates exercise well)', 'Madhyama Bala (Moderate — average energy)', 'Avara Bala (Weak — easily fatigued)'],
+  },
+  {
+    key: 'sara',
+    label: 'Sara (Tissue Quality / Constitution)',
+    sublabel: 'Your predominant body tissue type',
+    icon: '🧬',
+    options: ['Tvak Sara (Skin — smooth, radiant)', 'Rakta Sara (Blood — reddish, lively)', 'Mamsa Sara (Muscle — firm, strong body)', 'Meda Sara (Fat — plump, oily)', 'Asthi Sara (Bone — large joints, prominent frame)', 'Majja Sara (Marrow — deep-set eyes, wise)', 'Shukra Sara (Reproductive — vigorous, lustrous)'],
+  },
+  {
+    key: 'samhanana',
+    label: 'Samhanana (Body Frame)',
+    sublabel: 'Your overall body build',
+    icon: '🏗️',
+    options: ['Pravara Samhanana (Well-built, compact frame)', 'Madhyama Samhanana (Medium build)', 'Hina Samhanana (Lean, thin, irregular frame)'],
+  },
+  {
+    key: 'satmya',
+    label: 'Satmya (Tolerance / Adaptability)',
+    sublabel: 'Foods and environments you tolerate best',
+    icon: '🛡️',
+    options: ['Sarvarasa Satmya (All tastes, high adaptability)', 'Madhura-Snigdha Satmya (Sweet, unctuous preferred)', 'Laghu-Ruksha Satmya (Light, dry foods preferred)', 'Usna Satmya (Hot foods and climate preferred)', 'Sheeta Satmya (Cold foods and climate preferred)'],
+  },
+  {
+    key: 'sattva',
+    label: 'Sattva (Mental Strength)',
+    sublabel: 'Your emotional resilience and mental state',
+    icon: '🧘',
+    options: ['Pravara Sattva (High — calm, fearless, sharp memory)', 'Madhyama Sattva (Moderate — average emotional stability)', 'Avara Sattva (Low — fearful, anxious, poor memory)'],
+  },
+  {
+    key: 'vaya',
+    label: 'Vaya (Life Stage)',
+    sublabel: 'Your current life phase (determines Dosha dominance)',
+    icon: '⏳',
+    options: ['Bala Vaya (Kapha stage — childhood, 0-16 yrs)', 'Madhya Vaya (Pitta stage — young adult, 16-60 yrs)', 'Jara Vaya (Vata stage — senior, 60+ yrs)'],
+  },
+];
+
 // Helper for severity color & emoji description
 function getSeverityDescriptor(val) {
   const num = Number(val);
@@ -87,7 +162,9 @@ export default function InterviewScreen() {
   const navigate = useNavigate();
   const { history, setHistory, updateWithStructuredData } = useContext(HistoryContext);
 
-  // Stage state: 'complaint' (Stage 1) -> 'socrates' (Stage 2)
+  const isAyushMode = history.mode === 'ayush';
+
+  // Stage state: 'complaint' (Stage 1) -> 'socrates' or 'dashawidha' (Stage 2)
   const [stage, setStage] = useState('complaint');
 
   // Stage 1 State: Chief Complaint & Voice
@@ -99,7 +176,7 @@ export default function InterviewScreen() {
   const [apiError, setApiError] = useState('');
   const [micSupported, setMicSupported] = useState(true);
 
-  // Stage 2 State: SOCRATES Probing
+  // Stage 2 State: SOCRATES Probing (Allopathy mode)
   const [severity, setSeverity] = useState(history.socratesResponses?.severity || 5);
   const [onset, setOnset] = useState(history.socratesResponses?.onset || '');
   const [character, setCharacter] = useState(history.socratesResponses?.character || '');
@@ -107,6 +184,11 @@ export default function InterviewScreen() {
   const [associated, setAssociated] = useState(history.socratesResponses?.associated || []);
   const [aggravatingRelieving, setAggravatingRelieving] = useState(history.socratesResponses?.aggravatingRelieving || '');
   const [voiceAddendum, setVoiceAddendum] = useState('');
+
+  // Stage 2 State: Dashawidha Pariksha (AYUSH mode)
+  const [dashawidhaSelections, setDashawidhaSelections] = useState(
+    history.dashawidhaResponses || {}
+  );
 
   const recognitionRef = useRef(null);
 
@@ -187,7 +269,16 @@ export default function InterviewScreen() {
       recognitionRef.current?.stop();
       setIsListening(false);
     }
-    setStage('socrates');
+    // Branch to ayush or SOCRATES stage
+    setStage(isAyushMode ? 'dashawidha' : 'socrates');
+  };
+
+  // Dashawidha selection handler
+  const handleDashawidhaSelect = (key, value) => {
+    setDashawidhaSelections((prev) => ({
+      ...prev,
+      [key]: prev[key] === value ? '' : value, // toggle off if same selected
+    }));
   };
 
   const handleAssociatedToggle = (item) => {
@@ -204,29 +295,40 @@ export default function InterviewScreen() {
       ? `${mainInput}. Additional notes: ${voiceAddendum.trim()}` 
       : mainInput;
 
-    const socratesData = {
-      severity: Number(severity),
-      onset: onset || (severity >= 8 ? 'Sudden onset' : 'Gradual onset'),
-      character: character || 'Aching discomfort',
-      radiation: radiation || 'Localized',
-      duration: onset || '1-3 days',
-      associated,
-      aggravatingRelieving: aggravatingRelieving || 'Not specified',
-    };
-
     setIsProcessing(true);
     setApiError('');
 
     try {
-      setHistory((prev) => ({
-        ...prev,
-        rawTranscript: fullTranscript,
-        selectedSymptoms,
-        socratesResponses: socratesData,
-      }));
-
-      const structured = await structureHistory(fullTranscript, '', socratesData);
-      updateWithStructuredData(structured);
+      if (isAyushMode) {
+        // ── AYUSH MODE: Dashawidha Pariksha structuring ──
+        setHistory((prev) => ({
+          ...prev,
+          rawTranscript: fullTranscript,
+          selectedSymptoms,
+          dashawidhaResponses: dashawidhaSelections,
+        }));
+        const structured = await structureAyushHistory(fullTranscript, dashawidhaSelections);
+        updateWithStructuredData(structured);
+      } else {
+        // ── ALLOPATHY MODE: SOCRATES structuring ──
+        const socratesData = {
+          severity: Number(severity),
+          onset: onset || (severity >= 8 ? 'Sudden onset' : 'Gradual onset'),
+          character: character || 'Aching discomfort',
+          radiation: radiation || 'Localized',
+          duration: onset || '1-3 days',
+          associated,
+          aggravatingRelieving: aggravatingRelieving || 'Not specified',
+        };
+        setHistory((prev) => ({
+          ...prev,
+          rawTranscript: fullTranscript,
+          selectedSymptoms,
+          socratesResponses: socratesData,
+        }));
+        const structured = await structureHistory(fullTranscript, '', socratesData);
+        updateWithStructuredData(structured);
+      }
       navigate('/upload');
     } catch (err) {
       setApiError(err.message || 'Failed to process clinical history.');
@@ -418,9 +520,15 @@ export default function InterviewScreen() {
             <button
               onClick={handleProceedToProbing}
               disabled={!combinedInput && selectedSymptoms.length === 0}
-              className="py-2.5 px-6 rounded-xl bg-[#3B52E1] text-white text-xs font-bold hover:bg-blue-700 transition-all shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`py-2.5 px-6 rounded-xl text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                isAyushMode
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-[#3B52E1] hover:bg-blue-700'
+              }`}
             >
-              <span>Continue to Clinical Probing</span>
+              <span>
+                {isAyushMode ? 'Continue to Dashawidha Pariksha' : 'Continue to Clinical Probing'}
+              </span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -683,6 +791,187 @@ export default function InterviewScreen() {
               ) : (
                 <>
                   <span>Analyze & Proceed to Document Upload</span>
+                  <ChevronRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
+
+        </div>
+      )}
+
+
+      {/* ================= STAGE 2 (AYUSH): DASHAWIDHA PARIKSHA ================= */}
+      {stage === 'dashawidha' && (
+        <div className="flex flex-col gap-5 animate-fade-in">
+
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-200/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-bold mb-1 shadow-sm">
+                <Leaf className="w-3 h-3" /> Step 2.2 • Dashawidha Pariksha — 10-Factor Ayurvedic Assessment
+              </div>
+              <h1 className="text-lg font-extrabold text-slate-800">
+                Ayurvedic Constitutional Assessment
+              </h1>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Chief Complaint: <span className="font-bold text-emerald-700">"{combinedInput || selectedSymptoms.join(', ')}"</span>
+              </p>
+            </div>
+            <button
+              onClick={() => setStage('complaint')}
+              className="text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+            >
+              ← Edit Complaint
+            </button>
+          </div>
+
+          {/* Progress indicator */}
+          <div className="flex items-center gap-1.5 px-1">
+            {DASHAWIDHA_FACTORS.map((f, idx) => {
+              const filled = !!dashawidhaSelections[f.key];
+              return (
+                <div
+                  key={f.key}
+                  title={f.label}
+                  className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                    filled ? 'bg-emerald-500' : 'bg-slate-200'
+                  }`}
+                />
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-500 text-right -mt-3 pr-1">
+            {Object.values(dashawidhaSelections).filter(Boolean).length} / {DASHAWIDHA_FACTORS.length} factors completed
+          </p>
+
+          {/* Dashawidha factor cards grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {DASHAWIDHA_FACTORS.map((factor) => {
+              const selected = dashawidhaSelections[factor.key];
+              return (
+                <div
+                  key={factor.key}
+                  className={`rounded-2xl border p-4 flex flex-col gap-2.5 transition-all duration-200 shadow-sm ${
+                    selected
+                      ? 'border-emerald-400 bg-emerald-50/60 shadow-emerald-100'
+                      : 'border-slate-200 bg-white hover:border-emerald-200'
+                  }`}
+                >
+                  {/* Card header */}
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl leading-none mt-0.5">{factor.icon}</span>
+                    <div>
+                      <p className="text-xs font-extrabold text-slate-800 leading-tight">
+                        {factor.label}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{factor.sublabel}</p>
+                    </div>
+                    {selected && (
+                      <span className="ml-auto text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold shrink-0">
+                        ✓ Selected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Options */}
+                  <div className="flex flex-col gap-1.5">
+                    {factor.options.map((opt) => {
+                      const isActive = selected === opt;
+                      return (
+                        <button
+                          key={opt}
+                          onClick={() => handleDashawidhaSelect(factor.key, opt)}
+                          aria-pressed={isActive}
+                          className={`text-left text-xs py-2 px-3 rounded-xl border transition-all duration-150 leading-snug ${
+                            isActive
+                              ? 'bg-emerald-600 border-emerald-600 text-white font-bold shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-400 hover:bg-emerald-50'
+                          }`}
+                        >
+                          {isActive && <span className="mr-1.5">✓</span>}
+                          {opt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Optional Voice Addendum */}
+          <div className="card border border-slate-200 p-4 shadow-sm flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                <Mic className="w-3.5 h-3.5 text-emerald-600" /> Additional notes for the Vaidya (Doctor)?
+              </span>
+              <button
+                onClick={handleMicToggle}
+                className={`text-xs px-2.5 py-1 rounded-full border font-bold flex items-center gap-1 transition-all ${
+                  isListening
+                    ? 'bg-rose-600 border-rose-200 text-white animate-pulse'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                }`}
+              >
+                <Mic className="w-3 h-3" />
+                {isListening ? 'Recording…' : 'Speak extra details'}
+              </button>
+            </div>
+            <input
+              type="text"
+              value={voiceAddendum}
+              onChange={(e) => setVoiceAddendum(e.target.value)}
+              placeholder="e.g. Symptoms worsen in winter; have been taking Ashwagandha for 2 months"
+              className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          {/* Summary pill row */}
+          {Object.keys(dashawidhaSelections).filter(k => dashawidhaSelections[k]).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-1 animate-fade-in">
+              {DASHAWIDHA_FACTORS.filter(f => dashawidhaSelections[f.key]).map(f => (
+                <span
+                  key={f.key}
+                  className="inline-flex items-center gap-1 text-[10px] bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold px-2 py-0.5 rounded-full"
+                >
+                  {f.icon} {f.label.split(' (')[0]}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* API error */}
+          {apiError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{apiError}</span>
+            </div>
+          )}
+
+          {/* Footer Controls */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+            <button
+              onClick={() => setStage('complaint')}
+              disabled={isProcessing}
+              className="py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors flex items-center gap-1.5"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back to Symptoms
+            </button>
+
+            <button
+              onClick={handleFinalSubmit}
+              disabled={isProcessing}
+              className="py-3 px-7 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all shadow-lg flex items-center gap-2"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Structuring Ayurvedic Assessment with AI…</span>
+                </>
+              ) : (
+                <>
+                  <span>Analyze with Dashawidha AI & Proceed</span>
                   <ChevronRight className="w-4 h-4" />
                 </>
               )}
