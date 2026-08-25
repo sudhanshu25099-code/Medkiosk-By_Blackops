@@ -212,47 +212,15 @@ function getOfflineMockHistory(input, socratesData = null) {
  * @returns {Object} Extracted clinical entities
  */
 function getOfflineMockEntities(ocrText) {
-  const lower = (ocrText || '').toLowerCase();
-
-  // If OCR text mentions diabetes or glucose
-  if (lower.includes('diabetes') || lower.includes('glucose') || lower.includes('sugar') || lower.includes('metformin')) {
-    return {
-      diagnoses: [
-        "Type 2 Diabetes Mellitus",
-        "Essential Hypertension"
-      ],
-      medications: [
-        { name: "Metformin Hydrochloride", dose: "500mg", frequency: "Twice daily after meals" },
-        { name: "Amlodipine Besylate", dose: "5mg", frequency: "Once daily in morning" },
-        { name: "Atorvastatin Calcium", dose: "10mg", frequency: "Once daily at bedtime" }
-      ],
-      lab_results: [
-        { test: "Fasting Blood Sugar (FBS)", value: "156 mg/dL", reference_range: "70-100 mg/dL", status: "Abnormal" },
-        { test: "HbA1c (Glycated Hemoglobin)", value: "8.2%", reference_range: "< 5.7%", status: "Abnormal" },
-        { test: "Blood Pressure", value: "148/92 mmHg", reference_range: "< 120/80 mmHg", status: "Abnormal" }
-      ],
-      document_type: "Hospital OPD Prescription & Diagnostic Report",
-      document_date: "15 Jan 2026"
-    };
-  }
-
-  // Default standard prescription OCR mock
+  // Return an empty extraction baseline to prevent hallucinating lab values, 
+  // medications, or diagnoses that aren't actually in the document.
   return {
-    diagnoses: [
-      "Essential Hypertension (Grade 1)",
-      "Mild Tension-Type Cephalea"
-    ],
-    medications: [
-      { name: "Amlodipine", dose: "5mg", frequency: "1 tablet OD (Morning)" },
-      { name: "Paracetamol", dose: "650mg", frequency: "SOS (Pain/Fever)" }
-    ],
-    lab_results: [
-      { test: "Blood Pressure (Sitting)", value: "150/90 mmHg", reference_range: "120/80 mmHg", status: "Abnormal" },
-      { test: "Hemoglobin (Hb)", value: "13.2 g/dL", reference_range: "12.0 - 15.5 g/dL", status: "Normal" },
-      { test: "Serum TSH", value: "2.3 mIU/L", reference_range: "0.4 - 4.5 mIU/L", status: "Normal" }
-    ],
-    document_type: "Prescription Slip & Vitals Chart",
-    document_date: "2026-02-10"
+    diagnoses: [],
+    medications: [],
+    lab_results: [],
+    clinical_notes: null,
+    document_type: null,
+    document_date: null
   };
 }
 
@@ -394,20 +362,34 @@ export async function extractClinicalEntities(ocrText) {
     return getOfflineMockEntities(ocrText);
   }
 
-  const prompt = `Extract clinical entities from this medical document text:
-"${ocrText}"
+  const prompt = `You are an expert medical information extraction assistant for an Indian hospital OPD system.
+Extract ALL clinical entities from the following medical document text with maximum accuracy.
 
-Return ONLY valid JSON, no markdown:
+Document Text:
+"""${ocrText}"""
+
+Extraction Rules:
+1. Extract every diagnosis, condition, and clinical finding mentioned
+2. For medications: capture full name, dose, frequency, route (oral/IV/etc.), and duration if stated
+3. For lab results: include test name, value, unit, reference range, and flag as Normal/Abnormal
+4. Capture vital signs as lab results (BP, HR, SpO2, Temperature, Weight, BMI)
+5. Identify the document type accurately (Prescription, Lab Report, Discharge Summary, Radiology Report, OPD Visit Note)
+6. Extract the document date or visit date if present
+7. Include any doctor's notes, follow-up instructions, or special advice in "clinical_notes"
+8. If data is missing or unclear, use null — do NOT hallucinate values
+
+Return ONLY valid JSON with no markdown or extra text:
 {
-  "diagnoses": ["diagnosis1"],
+  "diagnoses": ["Full diagnosis name with ICD context if mentioned"],
   "medications": [
-    { "name": "Medicine", "dose": "Dose", "frequency": "Times per day" }
+    { "name": "Medicine name", "dose": "Dose with unit", "frequency": "e.g. Once daily (OD)", "route": "Oral/IV/Topical", "duration": "e.g. 5 days" }
   ],
   "lab_results": [
-    { "test": "Test name", "value": "Value", "reference_range": "Normal range", "status": "Normal or Abnormal" }
+    { "test": "Test name", "value": "Result value", "unit": "Unit", "reference_range": "Normal range", "status": "Normal or Abnormal" }
   ],
-  "document_type": "Prescription or Lab Report or Discharge Summary",
-  "document_date": "Date if mentioned"
+  "clinical_notes": "Any doctor instructions, follow-up dates, lifestyle advice, or special notes",
+  "document_type": "Prescription | Lab Report | Discharge Summary | Radiology Report | OPD Note",
+  "document_date": "Detected date or null"
 }`;
 
   try {
@@ -744,5 +726,144 @@ Structure this into the following JSON schema. Respond ONLY with valid JSON, no 
   } catch (error) {
     console.warn('[Gemini AYUSH] Network error. Falling back to offline mock:', error.message);
     return getOfflineMockAyush(transcription, dashawidhaData);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLINICAL DOCUMENT SUMMARIZATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate offline document summary fallback from extracted entities
+ * @param {Object} entities - Output from extractClinicalEntities
+ * @param {string} rawOcrText - Raw OCR text
+ * @returns {string} Formatted summary paragraph
+ */
+function getOfflineSummary(entities, rawOcrText) {
+  const parts = [];
+
+  if (entities?.document_type) {
+    parts.push(`This is a ${entities.document_type}${entities.document_date ? ` dated ${entities.document_date}` : ''}.`);
+  } else {
+    parts.push('This medical document has been analysed.');
+  }
+
+  if (entities?.diagnoses?.length > 0) {
+    parts.push(`Diagnoses recorded: ${entities.diagnoses.join(', ')}.`);
+  }
+
+  if (entities?.medications?.length > 0) {
+    const medList = entities.medications
+      .map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` (${m.frequency})` : ''}`)
+      .join(', ');
+    parts.push(`Current medications: ${medList}.`);
+  }
+
+  const abnormal = (entities?.lab_results || []).filter(
+    (l) => l.status?.toLowerCase() === 'abnormal'
+  );
+  const normal = (entities?.lab_results || []).filter(
+    (l) => l.status?.toLowerCase() !== 'abnormal'
+  );
+
+  if (abnormal.length > 0) {
+    const flags = abnormal.map((l) => `${l.test}: ${l.value}${l.unit ? ` ${l.unit}` : ''}`).join(', ');
+    parts.push(`⚠ Abnormal findings require clinical attention: ${flags}.`);
+  }
+  if (normal.length > 0) {
+    parts.push(`Normal results: ${normal.map((l) => l.test).join(', ')}.`);
+  }
+
+  if (entities?.clinical_notes) {
+    parts.push(`Clinical notes: ${entities.clinical_notes}`);
+  }
+
+  if (parts.length === 0 && rawOcrText) {
+    return `Document analysed. Extracted text: "${rawOcrText.substring(0, 200)}${rawOcrText.length > 200 ? '…' : ''}"`;
+  }
+
+  return parts.join(' ');
+}
+
+/**
+ * Summarize an extracted medical document into a concise clinical paragraph.
+ * Uses Gemini API when available; falls back to structured offline summary.
+ *
+ * @param {Object} entities   - Structured entities from extractClinicalEntities
+ * @param {string} rawOcrText - Original OCR text for context
+ * @param {string} [mode]     - 'allopathy' | 'ayush' — affects summary framing
+ * @returns {Promise<string>} Clinical summary paragraph
+ */
+export async function summarizeClinicalDocument(entities, rawOcrText = '', mode = 'allopathy') {
+  // Offline fallback — no API key
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '' || GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    console.info('[Gemini Summary] No API key — using structured offline summary.');
+    await new Promise((r) => setTimeout(r, 400));
+    return getOfflineSummary(entities, rawOcrText);
+  }
+
+  const entitiesJson = JSON.stringify(entities, null, 2);
+  const isAyush = mode === 'ayush';
+
+  const prompt = isAyush
+    ? `You are an Ayurvedic clinical assistant summarizing a medical document for a Vaidya (AYUSH physician) in India.
+Given the structured extracted data from a patient's medical document, write a concise, holistic clinical summary paragraph (3–5 sentences).
+Include any diagnoses, medications, and notable findings. Frame findings in both modern and Ayurvedic context where applicable.
+IMPORTANT: Do NOT hallucinate or mention any diagnoses, lab values, or medications that are not explicitly present in the data.
+Do not add any headings, bullet points, or JSON — plain paragraph text only.
+
+Extracted Data:
+${entitiesJson}
+
+Raw Document Text (for context):
+"${rawOcrText?.substring(0, 800) || 'Not available'}"
+
+Write the Ayurvedic clinical summary now:`
+    : `You are a clinical documentation assistant summarizing a medical document for an attending physician in an Indian hospital OPD.
+Given the structured extracted data from a patient's prior medical document, write a concise, professional clinical summary paragraph (3–5 sentences).
+Highlight key diagnoses, active medications with doses, abnormal lab findings, and any follow-up instructions.
+IMPORTANT: Do NOT hallucinate or mention any diagnoses, lab values, or medications that are not explicitly present in the data.
+Use standard medical terminology. Do not add headings, bullet points, or JSON — plain paragraph only.
+
+Extracted Structured Data:
+${entitiesJson}
+
+Raw Document Text (for additional context):
+"${rawOcrText?.substring(0, 800) || 'Not available'}"
+
+Write the clinical summary now:`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 500,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`[Gemini Summary] Request failed (${response.status}). Using offline summary.`);
+      return getOfflineSummary(entities, rawOcrText);
+    }
+
+    const data = await response.json();
+    const summaryText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!summaryText) {
+      return getOfflineSummary(entities, rawOcrText);
+    }
+
+    console.info('[Gemini Summary] Summary generated successfully.');
+    return summaryText;
+  } catch (error) {
+    console.warn('[Gemini Summary] Network error. Using offline summary:', error.message);
+    return getOfflineSummary(entities, rawOcrText);
   }
 }

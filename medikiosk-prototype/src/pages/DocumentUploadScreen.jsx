@@ -1,32 +1,38 @@
 import React, { useContext, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileText, X, Loader2, CheckCircle } from 'lucide-react';
+import { Upload, FileText, X, Loader2, CheckCircle, Sparkles, Brain, Eye } from 'lucide-react';
 import { HistoryContext } from '../context/HistoryContext';
 import { extractTextFromImage, parseOCRProgress } from '../utils/tesseractOCR';
-import { extractClinicalEntities } from '../utils/geminiAPI';
+import { extractClinicalEntities, summarizeClinicalDocument } from '../utils/geminiAPI';
 
 export default function DocumentUploadScreen() {
-  const navigate = useNavigate();
-  const { mergeOCRData } = useContext(HistoryContext);
+  const navigate  = useNavigate();
+  const { mergeOCRData, history } = useContext(HistoryContext);
 
   const [hasDocuments, setHasDocuments] = useState(null); // null | true | false
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [ocrProgress, setOcrProgress] = useState(0);
-  const [ocrStatus, setOcrStatus] = useState('');
+  const [file,         setFile]         = useState(null);
+  const [preview,      setPreview]      = useState(null);
+  const [ocrProgress,  setOcrProgress]  = useState(0);
+  const [ocrStatus,    setOcrStatus]    = useState('');
+  const [ocrEngine,    setOcrEngine]    = useState('tesseract'); // 'tesseract' | 'gemini'
   const [isProcessing, setIsProcessing] = useState(false);
-  const [extracted, setExtracted] = useState(null);
-  const [error, setError] = useState('');
+  const [extracted,    setExtracted]    = useState(null);
+  const [rawOcrText,   setRawOcrText]   = useState('');
+  const [summary,      setSummary]      = useState('');
+  const [error,        setError]        = useState('');
 
   const fileInputRef = useRef(null);
-  const dropRef = useRef(null);
+  const dropRef      = useRef(null);
 
   const processFile = async (uploadedFile) => {
     setFile(uploadedFile);
     setExtracted(null);
+    setSummary('');
+    setRawOcrText('');
     setError('');
     setOcrProgress(0);
-    setOcrStatus('Initialising OCR engine…');
+    setOcrStatus('Initialising dual-engine OCR pipeline…');
+    setOcrEngine('tesseract');
     setIsProcessing(true);
 
     // Preview
@@ -35,21 +41,42 @@ export default function DocumentUploadScreen() {
     reader.readAsDataURL(uploadedFile);
 
     try {
-      // Step 1: OCR
+      // ── Step 1 + 2: Tesseract OCR → Gemini Vision enhance ──
       const ocr = await extractTextFromImage(uploadedFile, (msg) => {
         setOcrStatus(msg.status || 'Processing…');
-        setOcrProgress(parseOCRProgress(msg));
+        setOcrEngine(msg.engine || 'tesseract');
+        // parseOCRProgress handles the raw {progress} value from Tesseract
+        const rawPct = msg.progress ?? 0;
+        const pct = typeof rawPct === 'number' && rawPct <= 1
+          ? Math.round(rawPct * 100)
+          : Math.round(rawPct);
+        // Cap at 88 during OCR — gemini steps use 88–100
+        setOcrProgress(Math.min(pct, 88));
       });
 
-      setOcrStatus('Extracting clinical entities…');
+      setRawOcrText(ocr.text);
+
+      // ── Step 3: Gemini entity extraction ──
+      setOcrStatus('Extracting clinical entities with Gemini AI…');
+      setOcrEngine('gemini');
       setOcrProgress(90);
 
-      // Step 2: Gemini entity extraction
       const entities = await extractClinicalEntities(ocr.text);
+
+      // ── Step 4: Gemini document summarization ──
+      setOcrStatus('Generating AI clinical summary…');
+      setOcrProgress(95);
+
+      const docSummary = await summarizeClinicalDocument(
+        entities,
+        ocr.text,
+        history?.mode || 'allopathy'
+      );
 
       setOcrProgress(100);
       setOcrStatus('Done');
       setExtracted(entities);
+      setSummary(docSummary);
       mergeOCRData(entities);
     } catch (err) {
       setError(err.message);
@@ -75,10 +102,28 @@ export default function DocumentUploadScreen() {
     setFile(null);
     setPreview(null);
     setExtracted(null);
+    setSummary('');
+    setRawOcrText('');
     setOcrProgress(0);
     setOcrStatus('');
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Engine badge helper
+  const EngineTag = ({ engine }) => {
+    if (engine === 'gemini') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] bg-purple-100 border border-purple-300 text-purple-700 font-bold px-1.5 py-0.5 rounded-full">
+          <Sparkles className="w-2.5 h-2.5" /> Gemini AI
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 border border-blue-300 text-blue-700 font-bold px-1.5 py-0.5 rounded-full">
+        <Eye className="w-2.5 h-2.5" /> Tesseract OCR
+      </span>
+    );
   };
 
   return (
@@ -98,7 +143,7 @@ export default function DocumentUploadScreen() {
               ({ val, label }) => (
                 <button
                   key={String(val)}
-                  onClick={() => { setHasDocuments(val); if (!val) { setFile(null); setExtracted(null); } }}
+                  onClick={() => { setHasDocuments(val); if (!val) { setFile(null); setExtracted(null); setSummary(''); } }}
                   aria-pressed={hasDocuments === val}
                   className={`flex-1 min-h-touch py-3 px-4 rounded-md border-2 font-semibold text-sm transition-colors duration-100
                     ${hasDocuments === val
@@ -143,6 +188,21 @@ export default function DocumentUploadScreen() {
                   <p className="text-xs text-neutral-gray">
                     Prescriptions · Lab Reports · Discharge Summaries
                   </p>
+                </div>
+
+                {/* Pipeline info */}
+                <div className="mt-1 flex items-center gap-2 text-[10px] text-neutral-gray">
+                  <span className="flex items-center gap-1">
+                    <Eye className="w-3 h-3" /> Tesseract OCR
+                  </span>
+                  <span className="text-neutral-gray">→</span>
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-purple-500" /> Gemini Vision
+                  </span>
+                  <span className="text-neutral-gray">→</span>
+                  <span className="flex items-center gap-1">
+                    <Brain className="w-3 h-3 text-indigo-500" /> Gemini Summarize
+                  </span>
                 </div>
               </div>
             )}
@@ -191,11 +251,26 @@ export default function DocumentUploadScreen() {
                 {isProcessing && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-neutral-gray capitalize">{ocrStatus}</span>
+                      <span className="text-xs text-neutral-gray capitalize flex items-center gap-1.5">
+                        <EngineTag engine={ocrEngine} />
+                        {ocrStatus}
+                      </span>
                       <span className="text-xs text-neutral-gray font-mono">{ocrProgress}%</span>
                     </div>
                     <div className="progress-track">
-                      <div className="progress-fill" style={{ width: `${ocrProgress}%` }} />
+                      <div
+                        className={`progress-fill transition-all duration-500 ${
+                          ocrEngine === 'gemini' ? 'bg-purple-500' : ''
+                        }`}
+                        style={{ width: `${ocrProgress}%` }}
+                      />
+                    </div>
+                    {/* Step indicator */}
+                    <div className="flex justify-between mt-1.5 text-[10px] text-neutral-gray px-0.5">
+                      <span className={ocrProgress >= 5  ? 'text-blue-600 font-bold' : ''}>① Tesseract</span>
+                      <span className={ocrProgress >= 65 ? 'text-purple-600 font-bold' : ''}>② Gemini Vision</span>
+                      <span className={ocrProgress >= 90 ? 'text-indigo-600 font-bold' : ''}>③ Entity Extract</span>
+                      <span className={ocrProgress >= 95 ? 'text-emerald-600 font-bold' : ''}>④ Summarize</span>
                     </div>
                   </div>
                 )}
@@ -203,7 +278,7 @@ export default function DocumentUploadScreen() {
                 {/* Done */}
                 {!isProcessing && ocrProgress === 100 && (
                   <div className="flex items-center gap-2 text-success-green text-sm font-semibold">
-                    <CheckCircle className="w-4 h-4" /> Extraction complete
+                    <CheckCircle className="w-4 h-4" /> Extraction complete — all 4 AI pipeline stages succeeded
                   </div>
                 )}
 
@@ -216,10 +291,29 @@ export default function DocumentUploadScreen() {
               </div>
             )}
 
-            {/* Extracted entities */}
+            {/* ── AI Summary ── */}
+            {summary && !isProcessing && (
+              <div className="card animate-slide-up border border-purple-200 bg-gradient-to-br from-purple-50/40 to-white">
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-purple-100">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs font-extrabold text-purple-800 uppercase tracking-wide">
+                    AI Clinical Summary
+                  </span>
+                  <span className="ml-auto text-[10px] bg-purple-100 border border-purple-200 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                    Gemini Generated
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed">{summary}</p>
+              </div>
+            )}
+
+            {/* ── Extracted entities ── */}
             {extracted && (
               <div className="card animate-slide-up">
-                <div className="card-heading">Extracted Information</div>
+                <div className="card-heading flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-indigo-600" />
+                  Extracted Clinical Information
+                </div>
 
                 {extracted.diagnoses?.length > 0 && (
                   <div className="mb-3">
@@ -241,7 +335,13 @@ export default function DocumentUploadScreen() {
                       {extracted.medications.map((m, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-clinical-gray">
                           <span className="text-base leading-tight">💊</span>
-                          {m.name} {m.dose && `— ${m.dose}`} {m.frequency && `(${m.frequency})`}
+                          <span>
+                            <span className="font-medium">{m.name}</span>
+                            {m.dose      && ` — ${m.dose}`}
+                            {m.frequency && ` (${m.frequency})`}
+                            {m.route     && ` · ${m.route}`}
+                            {m.duration  && ` · ${m.duration}`}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -249,14 +349,19 @@ export default function DocumentUploadScreen() {
                 )}
 
                 {extracted.lab_results?.length > 0 && (
-                  <div>
+                  <div className="mb-3">
                     <p className="text-xs font-semibold text-neutral-gray uppercase mb-1">Lab Results</p>
                     <ul className="space-y-1">
                       {extracted.lab_results.map((l, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
                           <span className="text-base leading-tight">🧪</span>
                           <span className={l.status?.toLowerCase() === 'abnormal' ? 'text-warning-red-border font-medium' : 'text-clinical-gray'}>
-                            {l.test}: {l.value}
+                            {l.test}: {l.value}{l.unit ? ` ${l.unit}` : ''}
+                            {l.reference_range && (
+                              <span className="text-xs text-neutral-gray ml-1">
+                                (Ref: {l.reference_range})
+                              </span>
+                            )}
                             {l.status?.toLowerCase() === 'abnormal' && (
                               <span className="ml-1 text-xs font-semibold text-warning-red-border">⚠ Abnormal</span>
                             )}
@@ -267,18 +372,22 @@ export default function DocumentUploadScreen() {
                   </div>
                 )}
 
+                {extracted.clinical_notes && (
+                  <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-xs font-semibold text-amber-800 uppercase mb-1">Clinical Notes</p>
+                    <p className="text-xs text-amber-900 leading-relaxed">{extracted.clinical_notes}</p>
+                  </div>
+                )}
+
                 {extracted.document_type && (
-                  <p className="mt-3 text-xs text-neutral-gray">
+                  <p className="mt-2 text-xs text-neutral-gray">
                     Document type: <span className="font-medium">{extracted.document_type}</span>
                     {extracted.document_date && ` · ${extracted.document_date}`}
                   </p>
                 )}
 
                 <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={handleRemove}
-                    className="btn-secondary text-sm flex-1"
-                  >
+                  <button onClick={handleRemove} className="btn-secondary text-sm flex-1">
                     REMOVE
                   </button>
                   <button
